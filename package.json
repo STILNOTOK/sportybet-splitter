@@ -1,0 +1,13 @@
+{
+  "name": "sportybet-splitter",
+  "version": "1.0.0",
+  "description": "SportyBet Code Splitter",
+  "main": "final_axios.js",
+  "scripts": {
+    "start": "node final_axios.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "express": "^4.19.2"
+  }
+}

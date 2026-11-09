@@ -5,7 +5,6 @@ app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
 
-// Exact headers to look like a real browser
 const HEADERS = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -15,7 +14,6 @@ const HEADERS = {
     'Origin': 'https://www.sportybet.com'
 };
 
-// The UI
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
@@ -45,7 +43,7 @@ app.get('/', (req, res) => {
                         let text = "✅ Found " + data.total + " matches in code " + code + "\\n\\n";
                         text += "GENERATED CODES:\\n";
                         if (data.codes.length === 0) {
-                            text += "SportyBet rejected all combinations. (IP may be blocked, or matches are live).";
+                            text += "SportyBet rejected all combinations. (Matches may have started or odds changed).";
                         } else {
                             data.codes.forEach((c, i) => {
                                 text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
@@ -61,7 +59,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// The Engine
 app.get('/split', async (req, res) => {
     try {
         const code = req.query.code;
@@ -96,39 +93,54 @@ app.get('/split', async (req, res) => {
         for (let i = 0; i < max; i++) {
             console.log(`Generating Group ${i+1}...`);
             
-            const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
-            const group = shuffled.slice(0, size);
+            let success = false;
+            let attempts = 0;
 
-            // Strict Payload
-            const selections = group.map(m => {
-                const sel = {
-                    eventId: m.eventId,
-                    marketId: String(m.marketId),
-                    outcomeId: String(m.outcomeId)
-                };
-                if (m.specifier && m.specifier.trim() !== '') sel.specifier = m.specifier;
-                return sel;
-            });
+            // Retry up to 3 times per group
+            while (!success && attempts < 3) {
+                attempts++;
+                
+                const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
+                const group = shuffled.slice(0, size);
 
-            try {
-                const payload = { selections };
-                const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
-                const bookData = bookRes.data;
+                // ADDED productId and sportId back
+                const selections = group.map(m => {
+                    const sel = {
+                        eventId: m.eventId,
+                        marketId: String(m.marketId),
+                        outcomeId: String(m.outcomeId),
+                        productId: m.productId || 3,
+                        sportId: m.sportId || "sr:sport:1"
+                    };
+                    if (m.specifier && m.specifier.trim() !== '') sel.specifier = m.specifier;
+                    return sel;
+                });
 
-                if (bookData && bookData.data && bookData.data.shareCode) {
-                    console.log(`✅ Success: ${bookData.data.shareCode}`);
-                    generated.push({
-                        code: bookData.data.shareCode,
-                        odds: bookData.data.combinedOdds || 'N/A'
-                    });
-                } else {
-                    console.log(`❌ Rejected:`, JSON.stringify(bookData));
+                try {
+                    const payload = { selections };
+                    const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
+                    const bookData = bookRes.data;
+
+                    if (bookData && bookData.data && bookData.data.shareCode) {
+                        console.log(`✅ Success: ${bookData.data.shareCode}`);
+                        generated.push({
+                            code: bookData.data.shareCode,
+                            odds: bookData.data.combinedOdds || 'N/A'
+                        });
+                        success = true;
+                    } else {
+                        console.log(`❌ Attempt ${attempts} Rejected:`, JSON.stringify(bookData));
+                    }
+                } catch (err) {
+                    console.log(`❌ Attempt ${attempts} Error:`, err.response ? JSON.stringify(err.response.data) : err.message);
                 }
-            } catch (err) {
-                console.log(`❌ Axios Error:`, err.response ? JSON.stringify(err.response.data) : err.message);
+
+                if (!success) {
+                    await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+                }
             }
 
-            await new Promise(r => setTimeout(r, 2500));
+            await new Promise(r => setTimeout(r, 1000)); // Wait 1s before next group
         }
 
         res.json({ total: allMatches.length, codes: generated });
@@ -139,7 +151,6 @@ app.get('/split', async (req, res) => {
     }
 });
 
-// THIS IS THE CRITICAL CHANGE FOR RENDER
 const PORT = process.env.PORT || 9000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);

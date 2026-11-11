@@ -44,7 +44,7 @@ app.get('/', (req, res) => {
                         if (data.codes.length === 0) {
                             text += "❌ SportyBet rejected all combinations.\\n";
                             text += "🔍 EXACT REASON FROM SPORTYBET:\\n";
-                            text += data.lastError; // <--- THIS WILL SHOW THE EXACT ERROR
+                            text += data.lastError;
                         } else {
                             data.codes.forEach((c, i) => {
                                 text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
@@ -93,12 +93,14 @@ app.get('/split', async (req, res) => {
             let attempts = 0;
             let pool = [...allMatches]; 
 
-            while (!success && attempts < 3) { 
+            // INCREASED TO 10 ATTEMPTS TO DROP SUSPENDED MATCHES
+            while (!success && attempts < 10) { 
                 attempts++;
                 
                 const shuffled = pool.sort(() => Math.random() - 0.5);
                 const group = shuffled.slice(0, size);
 
+                // THE EXACT STRATEGY THAT WORKED: ONLY 4 FIELDS
                 const selections = group.map(m => {
                     const sel = {
                         eventId: m.eventId,
@@ -110,7 +112,8 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    await new Promise(r => setTimeout(r, 3000));
+                    // 2 second delay between attempts
+                    await new Promise(r => setTimeout(r, 2000));
 
                     const payload = { selections };
                     const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
@@ -124,9 +127,10 @@ app.get('/split', async (req, res) => {
                         });
                         success = true;
                     } else {
-                        lastError = JSON.stringify(bookData); // SAVE THE ERROR
-                        console.log(`❌ Rejected:`, lastError);
+                        lastError = JSON.stringify(bookData); 
+                        console.log(`❌ Attempt ${attempts} Rejected`);
                         
+                        // Drop the bad match if SportyBet tells us, otherwise drop one randomly
                         if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
                             const badId = bookData.data.unavailableOutcomes[0].eventId;
                             pool = pool.filter(m => m.eventId !== badId);
@@ -136,7 +140,7 @@ app.get('/split', async (req, res) => {
                     }
                 } catch (err) {
                     lastError = err.response ? JSON.stringify(err.response.data) : err.message;
-                    console.log(`❌ Error:`, lastError);
+                    console.log(`❌ Attempt ${attempts} Error`);
                 }
             }
         }

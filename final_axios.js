@@ -5,6 +5,7 @@ app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
 
+// Exact headers from the working strategy
 const HEADERS = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -18,7 +19,6 @@ app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
             <h1 style="color: #00e676;">SportyBet Splitter</h1>
-            <p style="color: #888;">Make sure the matches are starting later today.</p>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
             <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
             <input type="number" id="max" value="2" style="padding: 10px; width: 60px;">
@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
                 async function split() {
                     const code = document.getElementById('code').value.trim();
                     const out = document.getElementById('out');
-                    out.innerText = "⏳ Processing...";
+                    out.innerText = "⏳ Processing... (This may take a minute)";
                     
                     try {
                         const res = await fetch('/split?code=' + code + '&size=' + document.getElementById('size').value + '&max=' + document.getElementById('max').value);
@@ -43,7 +43,7 @@ app.get('/', (req, res) => {
                         let text = "✅ Found " + data.total + " matches in code " + code + "\\n\\n";
                         text += "GENERATED CODES:\\n";
                         if (data.codes.length === 0) {
-                            text += "SportyBet rejected all combinations. (Matches may have started or odds changed).";
+                            text += "SportyBet rejected all combinations.";
                         } else {
                             data.codes.forEach((c, i) => {
                                 text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
@@ -78,12 +78,6 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        if (allMatches.length === 0) {
-            return res.json({ error: "No matches found in this code." });
-        }
-
-        console.log(`Found ${allMatches.length} matches.`);
-        
         if (allMatches.length < size) {
             return res.json({ error: `Only ${allMatches.length} matches found. Cannot make groups of ${size}.` });
         }
@@ -95,28 +89,30 @@ app.get('/split', async (req, res) => {
             
             let success = false;
             let attempts = 0;
+            let pool = [...allMatches]; 
 
-            // Retry up to 3 times per group
-            while (!success && attempts < 3) {
+            while (!success && attempts < 3) { // Try max 3 times per group
                 attempts++;
                 
-                const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
+                const shuffled = pool.sort(() => Math.random() - 0.5);
                 const group = shuffled.slice(0, size);
 
-                // ADDED productId and sportId back
+                // THE EXACT STRATEGY THAT WORKED:
+                // ONLY eventId, marketId, outcomeId, specifier
                 const selections = group.map(m => {
                     const sel = {
                         eventId: m.eventId,
                         marketId: String(m.marketId),
-                        outcomeId: String(m.outcomeId),
-                        productId: m.productId || 3,
-                        sportId: m.sportId || "sr:sport:1"
+                        outcomeId: String(m.outcomeId)
                     };
                     if (m.specifier && m.specifier.trim() !== '') sel.specifier = m.specifier;
                     return sel;
                 });
 
                 try {
+                    // 3-second delay to strictly avoid rate limits
+                    await new Promise(r => setTimeout(r, 3000));
+
                     const payload = { selections };
                     const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
                     const bookData = bookRes.data;
@@ -130,17 +126,19 @@ app.get('/split', async (req, res) => {
                         success = true;
                     } else {
                         console.log(`❌ Attempt ${attempts} Rejected:`, JSON.stringify(bookData));
+                        
+                        // If SportyBet tells us exactly which match is bad, remove it
+                        if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
+                            const badId = bookData.data.unavailableOutcomes[0].eventId;
+                            pool = pool.filter(m => m.eventId !== badId);
+                        } else {
+                            pool.shift(); // Drop one randomly to change the combo
+                        }
                     }
                 } catch (err) {
-                    console.log(`❌ Attempt ${attempts} Error:`, err.response ? JSON.stringify(err.response.data) : err.message);
-                }
-
-                if (!success) {
-                    await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+                    console.log(`❌ Attempt ${attempts} Error:`, err.message);
                 }
             }
-
-            await new Promise(r => setTimeout(r, 1000)); // Wait 1s before next group
         }
 
         res.json({ total: allMatches.length, codes: generated });

@@ -5,7 +5,6 @@ app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
 
-// Exact headers from the working strategy
 const HEADERS = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -43,7 +42,9 @@ app.get('/', (req, res) => {
                         let text = "✅ Found " + data.total + " matches in code " + code + "\\n\\n";
                         text += "GENERATED CODES:\\n";
                         if (data.codes.length === 0) {
-                            text += "SportyBet rejected all combinations.";
+                            text += "❌ SportyBet rejected all combinations.\\n";
+                            text += "🔍 EXACT REASON FROM SPORTYBET:\\n";
+                            text += data.lastError; // <--- THIS WILL SHOW THE EXACT ERROR
                         } else {
                             data.codes.forEach((c, i) => {
                                 text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
@@ -83,6 +84,7 @@ app.get('/split', async (req, res) => {
         }
 
         const generated = [];
+        let lastError = "None";
         
         for (let i = 0; i < max; i++) {
             console.log(`Generating Group ${i+1}...`);
@@ -91,14 +93,12 @@ app.get('/split', async (req, res) => {
             let attempts = 0;
             let pool = [...allMatches]; 
 
-            while (!success && attempts < 3) { // Try max 3 times per group
+            while (!success && attempts < 3) { 
                 attempts++;
                 
                 const shuffled = pool.sort(() => Math.random() - 0.5);
                 const group = shuffled.slice(0, size);
 
-                // THE EXACT STRATEGY THAT WORKED:
-                // ONLY eventId, marketId, outcomeId, specifier
                 const selections = group.map(m => {
                     const sel = {
                         eventId: m.eventId,
@@ -110,7 +110,6 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    // 3-second delay to strictly avoid rate limits
                     await new Promise(r => setTimeout(r, 3000));
 
                     const payload = { selections };
@@ -125,23 +124,24 @@ app.get('/split', async (req, res) => {
                         });
                         success = true;
                     } else {
-                        console.log(`❌ Attempt ${attempts} Rejected:`, JSON.stringify(bookData));
+                        lastError = JSON.stringify(bookData); // SAVE THE ERROR
+                        console.log(`❌ Rejected:`, lastError);
                         
-                        // If SportyBet tells us exactly which match is bad, remove it
                         if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
                             const badId = bookData.data.unavailableOutcomes[0].eventId;
                             pool = pool.filter(m => m.eventId !== badId);
                         } else {
-                            pool.shift(); // Drop one randomly to change the combo
+                            pool.shift(); 
                         }
                     }
                 } catch (err) {
-                    console.log(`❌ Attempt ${attempts} Error:`, err.message);
+                    lastError = err.response ? JSON.stringify(err.response.data) : err.message;
+                    console.log(`❌ Error:`, lastError);
                 }
             }
         }
 
-        res.json({ total: allMatches.length, codes: generated });
+        res.json({ total: allMatches.length, codes: generated, lastError: lastError });
 
     } catch (e) {
         console.error("SERVER ERROR:", e.message);

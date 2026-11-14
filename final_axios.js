@@ -5,21 +5,24 @@ app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
 
+// STRICT HEADERS TO BYPASS CLOUDFLARE
 const HEADERS = {
-    'Accept': 'application/json',
+    'Accept': 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
     'Current-Country': 'NG',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36',
     'Referer': 'https://www.sportybet.com/ng/',
-    'Origin': 'https://www.sportybet.com'
+    'Origin': 'https://www.sportybet.com',
+    'X-Requested-With': 'XMLHttpRequest'
 };
 
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter (Direct API)</h1>
+            <h1 style="color: #00e676;">SportyBet Splitter (Final)</h1>
+            <p style="color: #888;">Use a code with 10-15 upcoming matches.</p>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
-            <input type="number" id="size" value="10" style="padding: 10px; width: 60px;">
+            <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
             <input type="number" id="max" value="2" style="padding: 10px; width: 60px;"> 
             <button onclick="split()" style="padding: 10px 20px; font-size: 16px; background: #00e676; border: none; font-weight: bold; cursor: pointer;">SPLIT</button>
             <pre id="out" style="background: #000; color: #00e676; padding: 20px; margin-top: 20px; text-align: left; font-size: 14px; white-space: pre-wrap;"></pre>
@@ -59,7 +62,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Helper to guarantee no duplicate eventIds in a group
 function buildGroup(allMatches, size) {
     const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
     const group = [];
@@ -83,6 +85,7 @@ app.get('/split', async (req, res) => {
         
         console.log(`\n--- PROCESSING: ${code} ---`);
 
+        // 1. Read Code
         const readRes = await axios.get(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
         const json = readRes.data;
 
@@ -94,7 +97,6 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        // Deduplicate original list
         const uniqueMatches = [];
         const seenIds = new Set();
         for (const m of allMatches) {
@@ -103,8 +105,6 @@ app.get('/split', async (req, res) => {
                 seenIds.add(m.eventId);
             }
         }
-
-        console.log(`Found ${uniqueMatches.length} unique matches.`);
 
         if (uniqueMatches.length < size) {
             return res.json({ error: `Only ${uniqueMatches.length} unique matches found. Cannot make groups of ${size}.` });
@@ -120,6 +120,7 @@ app.get('/split', async (req, res) => {
             let success = false;
             let attempts = 0;
 
+            // Retry up to 5 times per group
             while (!success && currentGroup.length > 0 && attempts < 5) { 
                 attempts++;
                 
@@ -136,7 +137,7 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    // EXACT PAYLOAD YOU PROVIDED
+                    // EXACT PAYLOAD YOU FOUND
                     const payload = { 
                         products: [1],
                         source: "web",
@@ -144,7 +145,7 @@ app.get('/split', async (req, res) => {
                         selections
                     };
                     
-                    await new Promise(r => setTimeout(r, 2000)); // 2s delay
+                    await new Promise(r => setTimeout(r, 2000));
 
                     const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
                     const bookData = bookRes.data;
@@ -160,7 +161,7 @@ app.get('/split', async (req, res) => {
                         lastError = JSON.stringify(bookData); 
                         console.log(`❌ Rejected:`, lastError);
                         
-                        // Smart retry: remove the bad match
+                        // Remove bad match if provided
                         if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
                             const badId = bookData.data.unavailableOutcomes[0].eventId;
                             currentGroup = currentGroup.filter(m => m.eventId !== badId);

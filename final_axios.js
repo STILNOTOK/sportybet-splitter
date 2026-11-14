@@ -43,8 +43,7 @@ app.get('/', (req, res) => {
                         text += "GENERATED CODES:\\n";
                         if (data.codes.length === 0) {
                             text += "❌ SportyBet rejected all combinations.\\n";
-                            text += "🔍 EXACT REASON FROM SPORTYBET:\\n";
-                            text += data.lastError;
+                            text += "🔍 EXACT REASON:\\n" + data.lastError;
                         } else {
                             data.codes.forEach((c, i) => {
                                 text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
@@ -59,6 +58,22 @@ app.get('/', (req, res) => {
         </body>
     `);
 });
+
+// Helper to guarantee no duplicate eventIds in a group
+function buildGroup(allMatches, size) {
+    const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
+    const group = [];
+    const usedEventIds = new Set();
+
+    for (const match of shuffled) {
+        if (!usedEventIds.has(match.eventId)) {
+            group.push(match);
+            usedEventIds.add(match.eventId);
+        }
+        if (group.length === size) break;
+    }
+    return group;
+}
 
 app.get('/split', async (req, res) => {
     try {
@@ -79,8 +94,18 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        if (allMatches.length < size) {
-            return res.json({ error: `Only ${allMatches.length} matches found. Cannot make groups of ${size}.` });
+        // Remove duplicates from the original list just in case
+        const uniqueMatches = [];
+        const seenIds = new Set();
+        for (const m of allMatches) {
+            if (!seenIds.has(m.eventId)) {
+                uniqueMatches.push(m);
+                seenIds.add(m.eventId);
+            }
+        }
+
+        if (uniqueMatches.length < size) {
+            return res.json({ error: `Only ${uniqueMatches.length} unique matches found. Cannot make groups of ${size}.` });
         }
 
         const generated = [];
@@ -91,16 +116,13 @@ app.get('/split', async (req, res) => {
             
             let success = false;
             let attempts = 0;
-            let pool = [...allMatches]; 
 
-            // INCREASED TO 10 ATTEMPTS TO DROP SUSPENDED MATCHES
-            while (!success && attempts < 10) { 
+            while (!success && attempts < 5) { 
                 attempts++;
                 
-                const shuffled = pool.sort(() => Math.random() - 0.5);
-                const group = shuffled.slice(0, size);
+                // Use the helper to get a group with NO duplicate games
+                const group = buildGroup(uniqueMatches, size);
 
-                // THE EXACT STRATEGY THAT WORKED: ONLY 4 FIELDS
                 const selections = group.map(m => {
                     const sel = {
                         eventId: m.eventId,
@@ -112,7 +134,6 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    // 2 second delay between attempts
                     await new Promise(r => setTimeout(r, 2000));
 
                     const payload = { selections };
@@ -129,14 +150,6 @@ app.get('/split', async (req, res) => {
                     } else {
                         lastError = JSON.stringify(bookData); 
                         console.log(`❌ Attempt ${attempts} Rejected`);
-                        
-                        // Drop the bad match if SportyBet tells us, otherwise drop one randomly
-                        if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
-                            const badId = bookData.data.unavailableOutcomes[0].eventId;
-                            pool = pool.filter(m => m.eventId !== badId);
-                        } else {
-                            pool.shift(); 
-                        }
                     }
                 } catch (err) {
                     lastError = err.response ? JSON.stringify(err.response.data) : err.message;
@@ -145,7 +158,7 @@ app.get('/split', async (req, res) => {
             }
         }
 
-        res.json({ total: allMatches.length, codes: generated, lastError: lastError });
+        res.json({ total: uniqueMatches.length, codes: generated, lastError: lastError });
 
     } catch (e) {
         console.error("SERVER ERROR:", e.message);

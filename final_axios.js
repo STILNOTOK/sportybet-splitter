@@ -17,10 +17,10 @@ const HEADERS = {
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter</h1>
+            <h1 style="color: #00e676;">SportyBet Splitter (Direct API)</h1>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
-            <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
-            <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> <!-- Set to 1 for testing -->
+            <input type="number" id="size" value="10" style="padding: 10px; width: 60px;">
+            <input type="number" id="max" value="2" style="padding: 10px; width: 60px;"> 
             <button onclick="split()" style="padding: 10px 20px; font-size: 16px; background: #00e676; border: none; font-weight: bold; cursor: pointer;">SPLIT</button>
             <pre id="out" style="background: #000; color: #00e676; padding: 20px; margin-top: 20px; text-align: left; font-size: 14px; white-space: pre-wrap;"></pre>
 
@@ -28,7 +28,7 @@ app.get('/', (req, res) => {
                 async function split() {
                     const code = document.getElementById('code').value.trim();
                     const out = document.getElementById('out');
-                    out.innerText = "⏳ Processing... (This may take a minute)";
+                    out.innerText = "⏳ Processing...";
                     
                     try {
                         const res = await fetch('/split?code=' + code + '&size=' + document.getElementById('size').value + '&max=' + document.getElementById('max').value);
@@ -43,7 +43,7 @@ app.get('/', (req, res) => {
                         text += "GENERATED CODES:\\n";
                         if (data.codes.length === 0) {
                             text += "❌ SportyBet rejected all combinations.\\n";
-                            text += "🔍 EXACT REASON:\\n" + data.lastError;
+                            text += "🔍 REASON:\\n" + data.lastError;
                         } else {
                             data.codes.forEach((c, i) => {
                                 text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
@@ -59,6 +59,7 @@ app.get('/', (req, res) => {
     `);
 });
 
+// Helper to guarantee no duplicate eventIds in a group
 function buildGroup(allMatches, size) {
     const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
     const group = [];
@@ -93,7 +94,7 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        // Deduplicate
+        // Deduplicate original list
         const uniqueMatches = [];
         const seenIds = new Set();
         for (const m of allMatches) {
@@ -102,6 +103,8 @@ app.get('/split', async (req, res) => {
                 seenIds.add(m.eventId);
             }
         }
+
+        console.log(`Found ${uniqueMatches.length} unique matches.`);
 
         if (uniqueMatches.length < size) {
             return res.json({ error: `Only ${uniqueMatches.length} unique matches found. Cannot make groups of ${size}.` });
@@ -113,15 +116,14 @@ app.get('/split', async (req, res) => {
         for (let i = 0; i < max; i++) {
             console.log(`Generating Group ${i+1}...`);
             
+            let currentGroup = buildGroup(uniqueMatches, size);
             let success = false;
             let attempts = 0;
 
-            while (!success && attempts < 3) { 
+            while (!success && currentGroup.length > 0 && attempts < 5) { 
                 attempts++;
                 
-                const group = buildGroup(uniqueMatches, size);
-
-                const selections = group.map(m => {
+                const selections = currentGroup.map(m => {
                     const sel = {
                         eventId: m.eventId,
                         marketId: String(m.marketId),
@@ -134,9 +136,7 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    await new Promise(r => setTimeout(r, 3000));
-
-                    // THE EXACT PAYLOAD YOU FOUND
+                    // EXACT PAYLOAD YOU PROVIDED
                     const payload = { 
                         products: [1],
                         source: "web",
@@ -144,6 +144,8 @@ app.get('/split', async (req, res) => {
                         selections
                     };
                     
+                    await new Promise(r => setTimeout(r, 2000)); // 2s delay
+
                     const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
                     const bookData = bookRes.data;
 
@@ -156,11 +158,20 @@ app.get('/split', async (req, res) => {
                         success = true;
                     } else {
                         lastError = JSON.stringify(bookData); 
-                        console.log(`❌ Attempt ${attempts} Rejected`);
+                        console.log(`❌ Rejected:`, lastError);
+                        
+                        // Smart retry: remove the bad match
+                        if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
+                            const badId = bookData.data.unavailableOutcomes[0].eventId;
+                            currentGroup = currentGroup.filter(m => m.eventId !== badId);
+                        } else {
+                            currentGroup.pop();
+                        }
                     }
                 } catch (err) {
                     lastError = err.response ? JSON.stringify(err.response.data) : err.message;
-                    console.log(`❌ Attempt ${attempts} Error`);
+                    console.log(`❌ Error:`, lastError);
+                    currentGroup.pop();
                 }
             }
             await new Promise(r => setTimeout(r, 2000));

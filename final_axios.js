@@ -5,18 +5,14 @@ app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
 
-// FULL browser headers to bypass Cloudflare
 const HEADERS = {
-    'Accept': 'application/json, text/plain, */*',
+    'Accept': 'application/json',
     'Content-Type': 'application/json',
     'Current-Country': 'NG',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
     'Referer': 'https://www.sportybet.com/ng/',
     'Origin': 'https://www.sportybet.com',
-    'X-Requested-With': 'XMLHttpRequest',
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'same-origin'
+    'deviceType': 'web' // Added device context header
 };
 
 app.get('/', (req, res) => {
@@ -25,7 +21,7 @@ app.get('/', (req, res) => {
             <h1 style="color: #00e676;">SportyBet Splitter</h1>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
             <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
-            <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> <!-- Default to 1 to prevent rate limits -->
+            <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> <!-- Start with 1 to test -->
             <button onclick="split()" style="padding: 10px 20px; font-size: 16px; background: #00e676; border: none; font-weight: bold; cursor: pointer;">SPLIT</button>
             <pre id="out" style="background: #000; color: #00e676; padding: 20px; margin-top: 20px; text-align: left; font-size: 14px; white-space: pre-wrap;"></pre>
 
@@ -98,7 +94,7 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        // Deduplicate
+        // Deduplicate to prevent same-game multi-bet rejection
         const uniqueMatches = [];
         const seenIds = new Set();
         for (const m of allMatches) {
@@ -126,24 +122,30 @@ app.get('/split', async (req, res) => {
                 
                 const group = buildGroup(uniqueMatches, size);
 
-                // EXACT MCP SERVER PAYLOAD WITH ALL REQUIRED FIELDS
+                // STRICT MCP PAYLOAD: Only eventId, marketId, outcomeId, and specifier (if valid)
                 const selections = group.map(m => {
                     const sel = {
                         eventId: m.eventId,
                         marketId: String(m.marketId),
-                        outcomeId: String(m.outcomeId),
-                        productId: m.productId || 3,
-                        sportId: m.sportId || "sr:sport:1"
+                        outcomeId: String(m.outcomeId)
                     };
-                    if (m.specifier && m.specifier.trim() !== '') sel.specifier = m.specifier;
+                    if (m.specifier && typeof m.specifier === 'string' && m.specifier.trim() !== '') {
+                        sel.specifier = m.specifier;
+                    }
                     return sel;
                 });
 
                 try {
-                    // 3 second delay to avoid rate limit
-                    await new Promise(r => setTimeout(r, 3000));
+                    // 5 second delay to heavily avoid rate limits
+                    await new Promise(r => setTimeout(r, 5000));
 
-                    const payload = { selections };
+                    // ADDED flexibleOdds and acceptOddsChanges
+                    const payload = { 
+                        selections,
+                        flexibleOdds: true,
+                        acceptOddsChanges: true
+                    };
+                    
                     const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
                     const bookData = bookRes.data;
 
@@ -163,7 +165,7 @@ app.get('/split', async (req, res) => {
                     console.log(`❌ Attempt ${attempts} Error`);
                 }
             }
-            // Add extra delay between groups
+            // Extra delay between groups
             await new Promise(r => setTimeout(r, 2000));
         }
 

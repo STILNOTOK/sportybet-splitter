@@ -4,7 +4,6 @@ app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
 
-// Native fetch headers (Closer to real browser)
 const HEADERS = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -83,7 +82,6 @@ app.get('/split', async (req, res) => {
         
         console.log(`\n--- PROCESSING: ${code} ---`);
 
-        // 1. Read the code
         const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
         const json = await readRes.json();
 
@@ -94,6 +92,11 @@ app.get('/split', async (req, res) => {
         let allMatches = [];
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
+
+        // 🚨 THIS IS THE NEW LOGGING LINE 🚨
+        if (allMatches.length > 0) {
+            console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allMatches[0], null, 2));
+        }
 
         const uniqueMatches = [];
         const seenIds = new Set();
@@ -121,7 +124,6 @@ app.get('/split', async (req, res) => {
             while (!success && currentGroup.length > 0 && attempts < 5) { 
                 attempts++;
                 
-                // STRICT MAPPING: Only eventId, marketId, outcomeId, specifier
                 const selections = currentGroup.map(m => {
                     const sel = {
                         eventId: m.eventId,
@@ -135,10 +137,7 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    // EXACT MCP PAYLOAD (No products, no source)
                     const payload = { selections };
-                    
-                    // Wait 2 seconds to avoid rate limit
                     await new Promise(r => setTimeout(r, 2000));
 
                     const bookRes = await fetch(`${BASE}/api/ng/orders/share`, {
@@ -148,7 +147,6 @@ app.get('/split', async (req, res) => {
                     });
                     
                     const bookData = await bookRes.json();
-
                     const generatedCode = bookData.shareCode || bookData.bookingCode || (bookData.data && (bookData.data.shareCode || bookData.data.bookingCode));
 
                     if (bookData && bookData.success === true && generatedCode) {
@@ -159,7 +157,6 @@ app.get('/split', async (req, res) => {
                         });
                         success = true;
                     } else if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
-                        // Smart retry: remove the bad match
                         const badEventId = bookData.error.details[0].eventId;
                         console.log(`⚠️ Match ${badEventId} suspended. Retrying...`);
                         currentGroup = currentGroup.filter(m => m.eventId !== badEventId);

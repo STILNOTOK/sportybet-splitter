@@ -1,12 +1,12 @@
 {
   "name": "sportybet-splitter",
   "version": "1.0.0",
-  "main": "final_mcp.js",
+  "main": "final_axios.js",
   "scripts": {
-    "start": "node final_mcp.js"
+    "start": "node final_axios.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.1",
+    "axios": "^1.6.8",
     "express": "^4.19.2"
   }
 }

@@ -12,7 +12,7 @@ const HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
     'Referer': 'https://www.sportybet.com/ng/',
     'Origin': 'https://www.sportybet.com',
-    'deviceType': 'web' // Added device context header
+    'deviceType': 'web'
 };
 
 app.get('/', (req, res) => {
@@ -94,7 +94,6 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        // Deduplicate to prevent same-game multi-bet rejection
         const uniqueMatches = [];
         const seenIds = new Set();
         for (const m of allMatches) {
@@ -122,7 +121,6 @@ app.get('/split', async (req, res) => {
                 
                 const group = buildGroup(uniqueMatches, size);
 
-                // STRICT MCP PAYLOAD: Only eventId, marketId, outcomeId, and specifier (if valid)
                 const selections = group.map(m => {
                     const sel = {
                         eventId: m.eventId,
@@ -136,14 +134,14 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    // 5 second delay to heavily avoid rate limits
-                    await new Promise(r => setTimeout(r, 5000));
+                    await new Promise(r => setTimeout(r, 3000));
 
-                    // ADDED flexibleOdds and acceptOddsChanges
+                    // THE EXACT PAYLOAD YOU FOUND
                     const payload = { 
-                        selections,
-                        flexibleOdds: true,
-                        acceptOddsChanges: true
+                        products: [1],
+                        source: "web",
+                        acceptOddsChanges: true,
+                        selections
                     };
                     
                     const bookRes = await axios.post(`${BASE}/api/ng/orders/share`, payload, { headers: HEADERS });
@@ -165,7 +163,6 @@ app.get('/split', async (req, res) => {
                     console.log(`❌ Attempt ${attempts} Error`);
                 }
             }
-            // Extra delay between groups
             await new Promise(r => setTimeout(r, 2000));
         }
 

@@ -60,10 +60,50 @@ function buildGroup(allMatches, size) {
     return group;
 }
 
+// ★★★ THE FINAL FIX: EXTRACT NESTED IDs ★★★
+function formatSelectionsForMCP(group) {
+    return group.map(g => {
+        // The direct API returns a nested structure. We must extract the exact IDs.
+        let marketId = "1";
+        let outcomeId = "1";
+        let specifier = undefined;
+
+        // Dig into the nested markets array
+        if (g.markets && g.markets.length > 0) {
+            const market = g.markets[0];
+            marketId = String(market.id);
+            if (market.specifier) specifier = market.specifier;
+
+            // Dig into the nested outcomes array
+            if (market.outcomes && market.outcomes.length > 0) {
+                outcomeId = String(market.outcomes[0].id);
+            }
+        } 
+        // Fallback if it happens to be flat
+        else if (g.marketId && g.outcomeId) {
+            marketId = String(g.marketId);
+            outcomeId = String(g.outcomeId);
+            if (g.specifier) specifier = g.specifier;
+        }
+
+        const sel = {
+            eventId: g.eventId,
+            marketId: marketId,
+            outcomeId: outcomeId
+        };
+
+        if (specifier && specifier.trim() !== '') {
+            sel.specifier = specifier;
+        }
+
+        return sel;
+    });
+}
+
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter (Hybrid Mode)</h1>
+            <h1 style="color: #00e676;">SportyBet Splitter (Final MCP)</h1>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
             <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
             <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> 
@@ -112,8 +152,7 @@ app.get('/split', async (req, res) => {
         
         console.log(`\n--- PROCESSING: ${code} ---`);
 
-        // STEP 1: Read using Direct API to get EXACT marketIds and outcomeIds
-        console.log("Reading code via Direct API...");
+        // Read using Direct API
         const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
         const json = await readRes.json();
 
@@ -127,11 +166,6 @@ app.get('/split', async (req, res) => {
 
         if (allMatches.length === 0) {
             return res.json({ error: "Could not read matches." });
-        }
-
-        // Log the first leg to confirm we have the exact numbers
-        if (allMatches.length > 0) {
-            console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allMatches[0], null, 2));
         }
 
         const uniqueMatches = [];
@@ -150,7 +184,6 @@ app.get('/split', async (req, res) => {
         const generated = [];
         
         for (let i = 0; i < max; i++) {
-            console.log(`Generating Group ${i+1}...`);
             let currentGroup = buildGroup(uniqueMatches, size);
             let success = false;
             let attempts = 0;
@@ -158,21 +191,11 @@ app.get('/split', async (req, res) => {
             while (!success && currentGroup.length > 0 && attempts < 5) {
                 attempts++;
                 
-                // Use the exact IDs from the Direct API response
-                const formattedSelections = currentGroup.map(g => {
-                    const sel = {
-                        eventId: g.eventId,
-                        marketId: String(g.marketId),
-                        outcomeId: String(g.outcomeId)
-                    };
-                    if (g.specifier && typeof g.specifier === 'string' && g.specifier.trim() !== '') {
-                        sel.specifier = g.specifier;
-                    }
-                    return sel;
-                });
+                // Use the new nested mapping function
+                const formattedSelections = formatSelectionsForMCP(currentGroup);
 
                 try {
-                    // STEP 2: Book using MCP Server to bypass Cloudflare
+                    // Book using MCP Server
                     const bookRes = await mcpClient.callTool({
                         name: "sportybet_book_bet",
                         arguments: { selections: formattedSelections }

@@ -60,36 +60,38 @@ function buildGroup(allMatches, size) {
     return group;
 }
 
-// ★★★ THE FINAL FIX: EXTRACT NESTED IDs ★★★
+// ★★★ DYNAMIC MAPPING FOR ALL SPORTS ★★★
 function formatSelectionsForMCP(group) {
     return group.map(g => {
-        // The direct API returns a nested structure. We must extract the exact IDs.
         let marketId = "1";
         let outcomeId = "1";
         let specifier = undefined;
+        let sportId = "sr:sport:1"; // Default to Football
+        let productId = 3;
 
-        // Dig into the nested markets array
+        // Dig into the nested markets array for exact IDs
         if (g.markets && g.markets.length > 0) {
             const market = g.markets[0];
             marketId = String(market.id);
             if (market.specifier) specifier = market.specifier;
+            if (market.product) productId = market.product;
 
-            // Dig into the nested outcomes array
             if (market.outcomes && market.outcomes.length > 0) {
                 outcomeId = String(market.outcomes[0].id);
             }
         } 
-        // Fallback if it happens to be flat
-        else if (g.marketId && g.outcomeId) {
-            marketId = String(g.marketId);
-            outcomeId = String(g.outcomeId);
-            if (g.specifier) specifier = g.specifier;
+        
+        // Pull the exact sport ID (Football vs Basketball)
+        if (g.sport && g.sport.id) {
+            sportId = g.sport.id;
         }
 
         const sel = {
             eventId: g.eventId,
             marketId: marketId,
-            outcomeId: outcomeId
+            outcomeId: outcomeId,
+            sportId: sportId,
+            productId: productId
         };
 
         if (specifier && specifier.trim() !== '') {
@@ -103,7 +105,7 @@ function formatSelectionsForMCP(group) {
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter (Final MCP)</h1>
+            <h1 style="color: #00e676;">SportyBet Splitter (Final)</h1>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
             <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
             <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> 
@@ -114,7 +116,7 @@ app.get('/', (req, res) => {
                 async function split() {
                     const code = document.getElementById('code').value.trim();
                     const out = document.getElementById('out');
-                    out.innerText = "⏳ Processing...";
+                    out.innerText = "⏳ Processing... (This may take a minute)";
                     
                     try {
                         const res = await fetch('/split?code=' + code + '&size=' + document.getElementById('size').value + '&max=' + document.getElementById('max').value);
@@ -188,10 +190,10 @@ app.get('/split', async (req, res) => {
             let success = false;
             let attempts = 0;
 
-            while (!success && currentGroup.length > 0 && attempts < 5) {
+            // Increased retries for volatile sports like Basketball
+            while (!success && currentGroup.length > 0 && attempts < 8) {
                 attempts++;
                 
-                // Use the new nested mapping function
                 const formattedSelections = formatSelectionsForMCP(currentGroup);
 
                 try {
@@ -214,6 +216,7 @@ app.get('/split', async (req, res) => {
                     } else if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
                         const badEventId = bookData.error.details[0].eventId;
                         console.log(`⚠️ Match ${badEventId} suspended. Retrying...`);
+                        // Remove the suspended match
                         currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
                     } else {
                         console.log(`❌ Rejected:`, JSON.stringify(bookData));
@@ -223,13 +226,14 @@ app.get('/split', async (req, res) => {
                     console.log(`❌ Error:`, err.message);
                     break;
                 }
-                await new Promise(r => setTimeout(r, 1500));
+                // 3 second delay gives basketball odds time to stabilize
+                await new Promise(r => setTimeout(r, 3000));
             }
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 2000));
         }
 
         if (generated.length === 0) {
-            return res.json({ error: "SportyBet rejected all groups." });
+            return res.json({ error: "SportyBet rejected all groups. Matches may be live." });
         }
 
         res.json({ total: uniqueMatches.length, codes: generated });

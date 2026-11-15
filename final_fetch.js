@@ -93,7 +93,7 @@ app.get('/split', async (req, res) => {
         if (json.data.outcomes) allMatches = json.data.outcomes;
         else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
 
-        // 🚨 THIS IS THE NEW LOGGING LINE 🚨
+        // 🚨 THIS IS THE LOGGING LINE 🚨
         if (allMatches.length > 0) {
             console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allMatches[0], null, 2));
         }
@@ -137,7 +137,15 @@ app.get('/split', async (req, res) => {
                 });
 
                 try {
-                    const payload = { selections };
+                    // PAYLOAD WITH STAKE AND PRODUCTS
+                    const payload = { 
+                        products: [1],
+                        source: "web",
+                        acceptOddsChanges: true,
+                        stake: 10,
+                        selections
+                    };
+                    
                     await new Promise(r => setTimeout(r, 2000));
 
                     const bookRes = await fetch(`${BASE}/api/ng/orders/share`, {

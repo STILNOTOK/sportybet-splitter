@@ -8,7 +8,6 @@ app.use(express.json());
 
 let mcpClient;
 
-// 1. Setup the MCP Client
 async function initMCP() {
     const transport = new StdioClientTransport({
         command: "node",
@@ -36,20 +35,25 @@ function shuffle(arr) {
   return a;
 }
 
-function split(arr, size) {
-  const shuffled = shuffle(arr);
-  const groups = [];
-  for (let i = 0; i < shuffled.length; i += size) {
-    groups.push(shuffled.slice(i, i + size));
-  }
-  return groups;
+function buildGroup(allMatches, size) {
+    const shuffled = shuffle([...allMatches]);
+    const group = [];
+    const usedEventIds = new Set();
+
+    for (const match of shuffled) {
+        if (!usedEventIds.has(match.eventId)) {
+            group.push(match);
+            usedEventIds.add(match.eventId);
+        }
+        if (group.length === size) break;
+    }
+    return group;
 }
 
-// 2. The Frontend
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter (MCP Server)</h1>
+            <h1 style="color: #00e676;">SportyBet Splitter (MCP Mode)</h1>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
             <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
             <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> 
@@ -60,7 +64,7 @@ app.get('/', (req, res) => {
                 async function split() {
                     const code = document.getElementById('code').value.trim();
                     const out = document.getElementById('out');
-                    out.innerText = "⏳ Processing... (This may take a minute)";
+                    out.innerText = "⏳ Processing...";
                     
                     try {
                         const res = await fetch('/split?code=' + code + '&size=' + document.getElementById('size').value + '&max=' + document.getElementById('max').value);
@@ -90,7 +94,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// 3. The Engine (Your exact working MCP logic)
 app.get('/split', async (req, res) => {
     try {
         const code = req.query.code;
@@ -115,18 +118,13 @@ app.get('/split', async (req, res) => {
         }
 
         if (allSelections.length < size) {
-            return res.json({ error: `Not enough matches (${allSelections.length} < ${size})` });
+            return res.json({ error: `Only ${allSelections.length} matches found. Cannot make groups of ${size}.` });
         }
 
-        let groups = split(allSelections, size);
-        groups = groups.slice(0, max);
+        const generated = [];
         
-        const newCodes = [];
-
-        for (let i = 0; i < groups.length; i++) {
-            let currentGroup = groups[i];
-            console.log(`\nBooking Group ${i + 1} (${currentGroup.length} matches)...`);
-
+        for (let i = 0; i < max; i++) {
+            let currentGroup = buildGroup(allSelections, size);
             let success = false;
             let attempts = 0;
 
@@ -155,34 +153,34 @@ app.get('/split', async (req, res) => {
                     const generatedCode = bookData.shareCode || bookData.bookingCode || (bookData.data && (bookData.data.shareCode || bookData.data.bookingCode));
 
                     if (bookData && bookData.success === true && generatedCode) {
-                        console.log(`✅ Success! New Code: ${generatedCode}`);
-                        newCodes.push({
+                        console.log(`✅ Success: ${generatedCode}`);
+                        generated.push({
                             code: generatedCode,
                             odds: bookData.combinedOdds || 'N/A'
                         });
                         success = true;
-                    } else if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED") {
+                    } else if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
                         const badEventId = bookData.error.details[0].eventId;
                         console.log(`⚠️ Match ${badEventId} suspended. Retrying...`);
                         currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
                     } else {
                         console.log(`❌ Rejected:`, JSON.stringify(bookData));
-                        break;
+                        break; 
                     }
                 } catch (err) {
                     console.log(`❌ Error:`, err.message);
                     break;
                 }
-                await new Promise(r => setTimeout(r, 1000));
+                await new Promise(r => setTimeout(r, 1500));
             }
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 1500));
         }
 
-        if (newCodes.length === 0) {
+        if (generated.length === 0) {
             return res.json({ error: "SportyBet rejected all groups." });
         }
 
-        res.json({ total: allSelections.length, codes: newCodes });
+        res.json({ total: allSelections.length, codes: generated });
 
     } catch (e) {
         console.error("SERVER ERROR:", e.message);
@@ -190,7 +188,6 @@ app.get('/split', async (req, res) => {
     }
 });
 
-// 4. Start server (Render compatible)
 const PORT = process.env.PORT || 9000;
 app.listen(PORT, '0.0.0.0', async () => {
     console.log(`Server running on port ${PORT}`);

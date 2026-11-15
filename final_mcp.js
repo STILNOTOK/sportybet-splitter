@@ -6,6 +6,16 @@ const path = require('path');
 const app = express();
 app.use(express.json());
 
+const BASE = 'https://www.sportybet.com';
+const HEADERS = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'Current-Country': 'NG',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+    'Referer': 'https://www.sportybet.com/ng/',
+    'Origin': 'https://www.sportybet.com'
+};
+
 let mcpClient;
 
 async function initMCP() {
@@ -50,36 +60,10 @@ function buildGroup(allMatches, size) {
     return group;
 }
 
-// ★★★ THE FIX: STRICT MAPPING FUNCTION ★★★
-function formatSelectionsForSportyBet(group) {
-    return group.map(g => {
-        const sel = {
-            eventId: g.eventId,
-            marketId: "1", // Default to 1X2
-            outcomeId: "1"  // Default to Home
-        };
-
-        // Try to use exact IDs if they exist
-        if (g.marketId) sel.marketId = String(g.marketId);
-        if (g.outcomeId) sel.outcomeId = String(g.outcomeId);
-
-        // Otherwise, translate text to numbers
-        const outcomeText = String(g.outcome || "").toLowerCase();
-        if (outcomeText.includes("home") || outcomeText === "1") sel.outcomeId = "1";
-        else if (outcomeText.includes("draw") || outcomeText === "2" || outcomeText === "x") sel.outcomeId = "2";
-        else if (outcomeText.includes("away") || outcomeText === "3") sel.outcomeId = "3";
-
-        if (g.specifier && g.specifier.trim() !== '') {
-            sel.specifier = g.specifier;
-        }
-        return sel;
-    });
-}
-
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter (MCP Mode)</h1>
+            <h1 style="color: #00e676;">SportyBet Splitter (Hybrid Mode)</h1>
             <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
             <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
             <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> 
@@ -128,43 +112,67 @@ app.get('/split', async (req, res) => {
         
         console.log(`\n--- PROCESSING: ${code} ---`);
 
-        const readRes = await mcpClient.callTool({
-            name: "sportybet_get_booking_status",
-            arguments: { bookingCode: code }
-        });
+        // STEP 1: Read using Direct API to get EXACT marketIds and outcomeIds
+        console.log("Reading code via Direct API...");
+        const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
+        const json = await readRes.json();
 
-        let parsedData = parseMCPResponse(readRes);
-        
-        let allSelections = [];
-        if (parsedData && parsedData.legs) allSelections = parsedData.legs;
-        else if (parsedData && parsedData.data && parsedData.data.legs) allSelections = parsedData.data.legs;
-
-        // Log the first leg so you can see EXACTLY what the MCP server returns
-        if (allSelections.length > 0) {
-            console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allSelections[0], null, 2));
+        if (!json || !json.data) {
+            return res.json({ error: "Invalid code or blocked by SportyBet." });
         }
 
-        if (allSelections.length === 0) {
+        let allMatches = [];
+        if (json.data.outcomes) allMatches = json.data.outcomes;
+        else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
+
+        if (allMatches.length === 0) {
             return res.json({ error: "Could not read matches." });
         }
 
-        if (allSelections.length < size) {
-            return res.json({ error: `Only ${allSelections.length} matches found. Cannot make groups of ${size}.` });
+        // Log the first leg to confirm we have the exact numbers
+        if (allMatches.length > 0) {
+            console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allMatches[0], null, 2));
+        }
+
+        const uniqueMatches = [];
+        const seenIds = new Set();
+        for (const m of allMatches) {
+            if (!seenIds.has(m.eventId)) {
+                uniqueMatches.push(m);
+                seenIds.add(m.eventId);
+            }
+        }
+
+        if (uniqueMatches.length < size) {
+            return res.json({ error: `Only ${uniqueMatches.length} unique matches found. Cannot make groups of ${size}.` });
         }
 
         const generated = [];
         
         for (let i = 0; i < max; i++) {
-            let currentGroup = buildGroup(allSelections, size);
+            console.log(`Generating Group ${i+1}...`);
+            let currentGroup = buildGroup(uniqueMatches, size);
             let success = false;
             let attempts = 0;
 
             while (!success && currentGroup.length > 0 && attempts < 5) {
                 attempts++;
                 
-                const formattedSelections = formatSelectionsForSportyBet(currentGroup);
+                // Use the exact IDs from the Direct API response
+                const formattedSelections = currentGroup.map(g => {
+                    const sel = {
+                        eventId: g.eventId,
+                        marketId: String(g.marketId),
+                        outcomeId: String(g.outcomeId)
+                    };
+                    if (g.specifier && typeof g.specifier === 'string' && g.specifier.trim() !== '') {
+                        sel.specifier = g.specifier;
+                    }
+                    return sel;
+                });
 
                 try {
+                    // STEP 2: Book using MCP Server to bypass Cloudflare
                     const bookRes = await mcpClient.callTool({
                         name: "sportybet_book_bet",
                         arguments: { selections: formattedSelections }
@@ -201,7 +209,7 @@ app.get('/split', async (req, res) => {
             return res.json({ error: "SportyBet rejected all groups." });
         }
 
-        res.json({ total: allSelections.length, codes: generated });
+        res.json({ total: uniqueMatches.length, codes: generated });
 
     } catch (e) {
         console.error("SERVER ERROR:", e.message);

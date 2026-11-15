@@ -50,6 +50,32 @@ function buildGroup(allMatches, size) {
     return group;
 }
 
+// ★★★ THE FIX: STRICT MAPPING FUNCTION ★★★
+function formatSelectionsForSportyBet(group) {
+    return group.map(g => {
+        const sel = {
+            eventId: g.eventId,
+            marketId: "1", // Default to 1X2
+            outcomeId: "1"  // Default to Home
+        };
+
+        // Try to use exact IDs if they exist
+        if (g.marketId) sel.marketId = String(g.marketId);
+        if (g.outcomeId) sel.outcomeId = String(g.outcomeId);
+
+        // Otherwise, translate text to numbers
+        const outcomeText = String(g.outcome || "").toLowerCase();
+        if (outcomeText.includes("home") || outcomeText === "1") sel.outcomeId = "1";
+        else if (outcomeText.includes("draw") || outcomeText === "2" || outcomeText === "x") sel.outcomeId = "2";
+        else if (outcomeText.includes("away") || outcomeText === "3") sel.outcomeId = "3";
+
+        if (g.specifier && g.specifier.trim() !== '') {
+            sel.specifier = g.specifier;
+        }
+        return sel;
+    });
+}
+
 app.get('/', (req, res) => {
     res.send(`
         <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
@@ -113,6 +139,11 @@ app.get('/split', async (req, res) => {
         if (parsedData && parsedData.legs) allSelections = parsedData.legs;
         else if (parsedData && parsedData.data && parsedData.data.legs) allSelections = parsedData.data.legs;
 
+        // Log the first leg so you can see EXACTLY what the MCP server returns
+        if (allSelections.length > 0) {
+            console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allSelections[0], null, 2));
+        }
+
         if (allSelections.length === 0) {
             return res.json({ error: "Could not read matches." });
         }
@@ -131,17 +162,7 @@ app.get('/split', async (req, res) => {
             while (!success && currentGroup.length > 0 && attempts < 5) {
                 attempts++;
                 
-                const formattedSelections = currentGroup.map(g => {
-                    const sel = {
-                        eventId: g.eventId,
-                        marketId: String(g.marketId || "1"),
-                        outcomeId: String(g.outcomeId || "1")
-                    };
-                    if (g.specifier && g.specifier.trim() !== '') {
-                        sel.specifier = g.specifier;
-                    }
-                    return sel;
-                });
+                const formattedSelections = formatSelectionsForSportyBet(currentGroup);
 
                 try {
                     const bookRes = await mcpClient.callTool({

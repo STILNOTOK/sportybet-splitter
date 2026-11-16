@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportyBet Code Splitter</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #121212; color: #ffffff; display: flex; justify-content: center; padding: 40px 20px; margin: 0; }
+        .container { background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); width: 100%; max-width: 600px; }
+        h1 { text-align: center; color: #00e676; margin-bottom: 5px; }
+        p.subtitle { text-align: center; color: #aaa; margin-bottom: 30px; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #ddd; }
+        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #2a2a2a; color: white; font-size: 16px; }
+        input:focus { outline: none; border-color: #00e676; }
+        .row { display: flex; gap: 15px; }
+        .row .form-group { flex: 1; }
+        .button-group { display: flex; gap: 10px; margin-top: 10px; }
+        button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-split { background: #00e676; color: #000; }
+        .btn-split:hover { background: #00c853; }
+        .btn-shuffle { background: #2196f3; color: #fff; }
+        .btn-shuffle:hover { background: #1976d2; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        #loading { display: none; text-align: center; margin-top: 20px; color: #00e676; font-weight: bold; }
+        #results { margin-top: 30px; }
+        .code-card { background: #2a2a2a; border-left: 4px solid #00e676; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        .code-card h3 { margin: 0 0 10px 0; color: #fff; font-size: 18px; }
+        .code-card a { color: #00e676; text-decoration: none; word-break: break-all; font-size: 14px; }
+        .code-card a:hover { text-decoration: underline; }
+        .error { color: #ff5252; background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 6px; text-align: center; border-left: 4px solid #ff5252; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>SportyBet Splitter</h1>
+    <p class="subtitle">Drop suspended matches and generate multiple codes instantly.</p>
+
+    <div class="form-group">
+        <label>Original Booking Code</label>
+        <input type="text" id="bookingCode" placeholder="e.g. V4WNW6" style="text-transform: uppercase;" autocomplete="off">
+    </div>
+
+    <div class="row">
+        <div class="form-group">
+            <label>Matches per Code</label>
+            <input type="number" id="groupSize" value="5" min="2" max="50">
+        </div>
+        <div class="form-group">
+            <label>Max Codes</label>
+            <input type="number" id="maxGroups" value="2" min="1" max="10">
+        </div>
+    </div>
+
+    <div class="button-group">
+        <button id="splitBtn" class="btn-split" onclick="processCode('split')">STRICT SPLIT</button>
+        <button id="shuffleBtn" class="btn-shuffle" onclick="processCode('shuffle')">SHUFFLE</button>
+    </div>
+    
+    <div id="loading">⏳ Generating codes... Please wait (Basketball may take longer due to odds changing)...</div>
+
+    <div id="results"></div>
+</div>
+
+<script>
+    async function processCode(action) {
+        const code = document.getElementById('bookingCode').value.trim();
+        const groupSize = parseInt(document.getElementById('groupSize').value);
+        const maxGroups = parseInt(document.getElementById('maxGroups').value);
+        
+        const splitBtn = document.getElementById('splitBtn');
+        const shuffleBtn = document.getElementById('shuffleBtn');
+        const loading = document.getElementById('loading');
+        const resultsDiv = document.getElementById('results');
+
+        if (!code) {
+            alert("Please enter a booking code!");
+            return;
+        }
+
+        // Reset UI
+        splitBtn.disabled = true;
+        shuffleBtn.disabled = true;
+        loading.style.display = 'block';
+        resultsDiv.innerHTML = '';
+
+        try {
+            const response = await fetch('/api/' + action, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ originalCode: code, groupSize: groupSize, maxGroups: maxGroups })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.codes) {
+                data.codes.forEach((group, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'code-card';
+                    card.innerHTML = `
+                        <h3>Group ${index + 1} (${group.matchCount} matches)</h3>
+                        <p style="margin: 5px 0 10px 0; font-size: 14px; color: #aaa;">Total Odds: <strong>${group.odds || 'N/A'}</strong></p>
+                        <a href="${group.url}" target="_blank">Code: ${group.newCode}</a>
+                    `;
+                    resultsDiv.appendChild(card);
+                });
+            } else {
+                resultsDiv.innerHTML = `<div class="error">❌ ${data.error || 'Failed to generate codes.'}</div>`;
+            }
+        } catch (err) {
+            resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`;
+        } finally {
+            splitBtn.disabled = false;
+            shuffleBtn.disabled = false;
+            loading.style.display = 'none';
+        }
+    }
+</script>
+
+</body>
+</html>

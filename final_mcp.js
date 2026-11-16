@@ -45,29 +45,37 @@ function shuffleArray(arr) {
   return a;
 }
 
-// ★★★ EXACT NESTED MAPPING FOR ALL SPORTS ★★★
+// ★★★ STRICT MAPPING: ONLY 4 FIELDS FOR MCP SERVER ★★★
 function formatSelectionsForMCP(group) {
     return group.map(g => {
         let marketId = "1";
         let outcomeId = "1";
         let specifier = undefined;
-        let sportId = "sr:sport:1";
-        let productId = 3;
 
+        // Extract exact nested IDs from the Direct API response
         if (g.markets && g.markets.length > 0) {
             const market = g.markets[0];
             marketId = String(market.id);
             if (market.specifier) specifier = market.specifier;
-            if (market.product) productId = market.product;
             if (market.outcomes && market.outcomes.length > 0) {
                 outcomeId = String(market.outcomes[0].id);
             }
-        } 
-        
-        if (g.sport && g.sport.id) sportId = g.sport.id;
+        } else if (g.marketId && g.outcomeId) {
+            marketId = String(g.marketId);
+            outcomeId = String(g.outcomeId);
+            if (g.specifier) specifier = g.specifier;
+        }
 
-        const sel = { eventId: g.eventId, marketId, outcomeId, sportId, productId };
-        if (specifier && specifier.trim() !== '') sel.specifier = specifier;
+        const sel = { 
+            eventId: g.eventId, 
+            marketId: marketId, 
+            outcomeId: outcomeId 
+        };
+        
+        if (specifier && specifier.trim() !== '') {
+            sel.specifier = specifier;
+        }
+        
         return sel;
     });
 }
@@ -126,7 +134,7 @@ app.get('/', (req, res) => {
     `);
 });
 
-// HELPER: Read the original code
+// Read the original code
 async function fetchMatches(code) {
     const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
     const json = await readRes.json();
@@ -147,13 +155,14 @@ async function fetchMatches(code) {
     return uniqueMatches;
 }
 
-// HELPER: Book a group and replace suspended matches
-async function tryBookGroup(initialGroup, fullPool, usedIds) {
+// Book a group with replacement logic
+async function tryBookGroup(initialGroup, fullPool, isStrict) {
     let currentGroup = [...initialGroup];
     let attempts = 0;
     let deadEventIds = new Set();
+    let usedIds = new Set(initialGroup.map(m => m.eventId)); // Track used so we don't pick same game twice in strict
 
-    while (currentGroup.length > 0 && attempts < 10) {
+    while (currentGroup.length > 0 && attempts < 15) {
         attempts++;
         const formattedSelections = formatSelectionsForMCP(currentGroup);
 
@@ -170,21 +179,24 @@ async function tryBookGroup(initialGroup, fullPool, usedIds) {
                 return { success: true, code: generatedCode, odds: bookData.combinedOdds || 'N/A' };
             } 
             
-            // If suspended, remove the bad match and try to find a replacement
+            // Handle suspended matches
             if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
+                // It could be multiple problems. We only drop the first one and retry.
                 const badEventId = bookData.error.details[0].eventId;
-                console.log(`⚠️ Match ${badEventId} suspended. Finding replacement...`);
+                console.log(`⚠️ Match ${badEventId} suspended. Replacing...`);
                 deadEventIds.add(badEventId);
                 
-                // Remove bad match from current group
+                // Remove bad match
                 currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
                 
-                // Try to fill the gap from the full pool
+                // Try to fill the gap
                 for (const m of fullPool) {
                     if (currentGroup.length >= initialGroup.length) break;
-                    // Don't add if it's dead, or if it's already in the group, or if it's used elsewhere (for strict)
-                    if (!deadEventIds.has(m.eventId) && !currentGroup.find(x => x.eventId === m.eventId) && !usedIds.has(m.eventId)) {
+                    // In strict mode, don't pick used matches. In shuffle, usedIds is empty.
+                    if (!deadEventIds.has(m.eventId) && !currentGroup.find(x => x.eventId === m.eventId)) {
+                        if (isStrict && usedIds.has(m.eventId)) continue; // Strict mode: skip used
                         currentGroup.push(m);
+                        if (isStrict) usedIds.add(m.eventId);
                     }
                 }
             } else {
@@ -195,12 +207,12 @@ async function tryBookGroup(initialGroup, fullPool, usedIds) {
             console.log(`❌ Error:`, err.message);
             return { success: false };
         }
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 2500)); // 2.5s delay for basketball odds
     }
     return { success: false };
 }
 
-// 1. STRICT SPLIT ENDPOINT (No overlapping games)
+// 1. STRICT SPLIT (No overlapping games)
 app.get('/split', async (req, res) => {
     try {
         const { code, size, max } = req.query;
@@ -214,21 +226,24 @@ app.get('/split', async (req, res) => {
 
         const generated = [];
         let availablePool = shuffleArray(matches); 
-        let usedIds = new Set();
+        let globalUsedIds = new Set();
 
         for (let i = 0; i < maxGroups; i++) {
             let initialGroup = [];
             for (let m of availablePool) {
-                if (!usedIds.has(m.eventId)) {
+                if (!globalUsedIds.has(m.eventId)) {
                     initialGroup.push(m);
-                    usedIds.add(m.eventId);
+                    globalUsedIds.add(m.eventId);
                 }
                 if (initialGroup.length === groupSize) break;
             }
 
-            if (initialGroup.length < groupSize) break;
+            if (initialGroup.length < groupSize) {
+                console.log("Ran out of unique matches for strict split.");
+                break;
+            }
 
-            const result = await tryBookGroup(initialGroup, availablePool, usedIds);
+            const result = await tryBookGroup(initialGroup, availablePool, true);
             if (result.success) {
                 generated.push({ code: result.code, odds: result.odds });
             }
@@ -240,7 +255,7 @@ app.get('/split', async (req, res) => {
     }
 });
 
-// 2. SHUFFLE ENDPOINT (Allows overlapping games)
+// 2. SHUFFLE (Allows overlapping games)
 app.get('/shuffle', async (req, res) => {
     try {
         const { code, size, max } = req.query;
@@ -257,9 +272,9 @@ app.get('/shuffle', async (req, res) => {
         for (let i = 0; i < maxGroups; i++) {
             const shuffledPool = shuffleArray(matches);
             const initialGroup = shuffledPool.slice(0, groupSize);
-            const emptyUsedSet = new Set(); // Shuffle allows reusing matches
-
-            const result = await tryBookGroup(initialGroup, shuffledPool, emptyUsedSet);
+            
+            // False means it's not strict, so it can reuse matches
+            const result = await tryBookGroup(initialGroup, shuffledPool, false);
             if (result.success) {
                 generated.push({ code: result.code, odds: result.odds });
             }

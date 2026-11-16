@@ -96,7 +96,7 @@ app.get('/', (req, res) => {
                 async function runAction(action) {
                     const code = document.getElementById('code').value.trim();
                     const out = document.getElementById('out');
-                    out.innerText = "⏳ Processing " + action.toUpperCase() + "...";
+                    out.innerText = "⏳ Processing " + action.toUpperCase() + "... (Basketball may take longer)";
                     
                     try {
                         const res = await fetch('/' + action + '?code=' + code + '&size=' + document.getElementById('size').value + '&max=' + document.getElementById('max').value);
@@ -147,14 +147,13 @@ async function fetchMatches(code) {
     return uniqueMatches;
 }
 
-// HELPER: Book a group with MCP
-async function tryBookGroup(currentGroup) {
-    let success = false;
+// HELPER: Book a group and replace suspended matches
+async function tryBookGroup(initialGroup, fullPool, usedIds) {
+    let currentGroup = [...initialGroup];
     let attempts = 0;
-    let generatedCode = null;
-    let odds = "N/A";
-    
-    while (!success && currentGroup.length > 0 && attempts < 5) {
+    let deadEventIds = new Set();
+
+    while (currentGroup.length > 0 && attempts < 10) {
         attempts++;
         const formattedSelections = formatSelectionsForMCP(currentGroup);
 
@@ -165,28 +164,40 @@ async function tryBookGroup(currentGroup) {
             });
 
             const bookData = parseMCPResponse(bookRes);
-            const code = bookData.shareCode || bookData.bookingCode || (bookData.data && (bookData.data.shareCode || bookData.data.bookingCode));
+            const generatedCode = bookData.shareCode || bookData.bookingCode || (bookData.data && (bookData.data.shareCode || bookData.data.bookingCode));
 
-            if (bookData && bookData.success === true && code) {
-                generatedCode = code;
-                odds = bookData.combinedOdds || 'N/A';
-                success = true;
-            } else if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
+            if (bookData && bookData.success === true && generatedCode) {
+                return { success: true, code: generatedCode, odds: bookData.combinedOdds || 'N/A' };
+            } 
+            
+            // If suspended, remove the bad match and try to find a replacement
+            if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
                 const badEventId = bookData.error.details[0].eventId;
-                console.log(`⚠️ Match ${badEventId} suspended. Retrying...`);
-                // Remove the bad match
+                console.log(`⚠️ Match ${badEventId} suspended. Finding replacement...`);
+                deadEventIds.add(badEventId);
+                
+                // Remove bad match from current group
                 currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
+                
+                // Try to fill the gap from the full pool
+                for (const m of fullPool) {
+                    if (currentGroup.length >= initialGroup.length) break;
+                    // Don't add if it's dead, or if it's already in the group, or if it's used elsewhere (for strict)
+                    if (!deadEventIds.has(m.eventId) && !currentGroup.find(x => x.eventId === m.eventId) && !usedIds.has(m.eventId)) {
+                        currentGroup.push(m);
+                    }
+                }
             } else {
-                console.log(`❌ Rejected:`, JSON.stringify(bookData));
-                break; 
+                console.log(`❌ Rejected by API:`, JSON.stringify(bookData));
+                return { success: false };
             }
         } catch (err) {
             console.log(`❌ Error:`, err.message);
-            break;
+            return { success: false };
         }
         await new Promise(r => setTimeout(r, 2000));
     }
-    return { success, generatedCode, odds };
+    return { success: false };
 }
 
 // 1. STRICT SPLIT ENDPOINT (No overlapping games)
@@ -202,28 +213,24 @@ app.get('/split', async (req, res) => {
         if (matches.length < groupSize) return res.json({ error: "Not enough matches." });
 
         const generated = [];
-        let availablePool = shuffleArray(matches); // Shuffle once
+        let availablePool = shuffleArray(matches); 
         let usedIds = new Set();
 
         for (let i = 0; i < maxGroups; i++) {
-            let currentGroup = [];
-            // Pick matches strictly not used yet
+            let initialGroup = [];
             for (let m of availablePool) {
                 if (!usedIds.has(m.eventId)) {
-                    currentGroup.push(m);
+                    initialGroup.push(m);
                     usedIds.add(m.eventId);
                 }
-                if (currentGroup.length === groupSize) break;
+                if (initialGroup.length === groupSize) break;
             }
 
-            if (currentGroup.length < groupSize) {
-                console.log("Ran out of unique matches for strict split.");
-                break;
-            }
+            if (initialGroup.length < groupSize) break;
 
-            const result = await tryBookGroup(currentGroup);
+            const result = await tryBookGroup(initialGroup, availablePool, usedIds);
             if (result.success) {
-                generated.push({ code: result.generatedCode, odds: result.odds });
+                generated.push({ code: result.code, odds: result.odds });
             }
         }
 
@@ -248,13 +255,13 @@ app.get('/shuffle', async (req, res) => {
         const generated = [];
 
         for (let i = 0; i < maxGroups; i++) {
-            // Shuffle the ENTIRE pool for every group
             const shuffledPool = shuffleArray(matches);
-            const currentGroup = shuffledPool.slice(0, groupSize);
+            const initialGroup = shuffledPool.slice(0, groupSize);
+            const emptyUsedSet = new Set(); // Shuffle allows reusing matches
 
-            const result = await tryBookGroup(currentGroup);
+            const result = await tryBookGroup(initialGroup, shuffledPool, emptyUsedSet);
             if (result.success) {
-                generated.push({ code: result.generatedCode, odds: result.odds });
+                generated.push({ code: result.code, odds: result.odds });
             }
         }
 

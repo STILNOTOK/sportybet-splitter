@@ -43,6 +43,13 @@
         .info-section h3 { color: #00e676; font-size: 15px; margin-bottom: 5px; margin-top: 15px; }
         .info-section p { margin-top: 5px; line-height: 1.4; }
         .disclaimer { margin-top: 20px; font-size: 12px; color: #ff5252; background: rgba(255, 82, 82, 0.05); padding: 10px; border-radius: 6px; border: 1px dashed #ff5252; line-height: 1.4; }
+
+        /* Premium Box */
+        #premiumBox { margin-top: 30px; border: 2px solid #9c27b0; padding: 20px; border-radius: 8px; background: #1a1a1a; }
+        #premiumBox h3 { color: #9c27b0; margin-top: 0; }
+        #premiumBox input { border: 1px solid #9c27b0; }
+        .btn-subscribe { padding: 12px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; }
+        .btn-subscribe:hover { background: #7b1fa2; }
     </style>
 </head>
 <body>
@@ -78,6 +85,15 @@
     <div id="loading">⏳ Generating codes... Please wait (Basketball may take longer due to odds changing)...</div>
 
     <div id="results"></div>
+
+    <!-- PREMIUM SUBSCRIPTION BOX -->
+    <div id="premiumBox">
+        <h3>⭐ Upgrade to Premium</h3>
+        <p style="font-size: 14px; color: #ccc;">Get unlimited splits and AI predictions for just ₦200/week.</p>
+        
+        <input type="email" id="paystackEmail" placeholder="Enter your email to subscribe" style="padding: 12px; width: 100%; margin-bottom: 10px; border-radius: 5px; background: #2a2a2a; color: white;">
+        <button class="btn-subscribe" onclick="subscribe()">Subscribe Now (₦200/week)</button>
+    </div>
 
     <!-- Write-up and Disclaimer -->
     <div class="info-section">
@@ -150,7 +166,31 @@
 
     // Placeholder for the AI Feature
     function runAI() {
-        alert("✨ AI Prediction is a Premium feature coming soon! Subscribe for 200 Naira/week to unlock unlimited splits and AI predictions.");
+        alert("✨ AI Prediction is a Premium feature coming soon! Subscribe below for 200 Naira/week to unlock unlimited splits and AI predictions.");
+    }
+
+    // Paystack Subscription Logic
+    async function subscribe() {
+        const email = document.getElementById('paystackEmail').value.trim();
+        if (!email) return alert("Please enter your email.");
+
+        try {
+            const response = await fetch('/api/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await response.json();
+            
+            if (data.url) {
+                // Redirect the user to Paystack Checkout
+                window.location.href = data.url;
+            } else {
+                alert("Error: " + (data.error || "Could not initialize payment. Check your Paystack keys on Render."));
+            }
+        } catch (error) {
+            alert("Network error. Please try again.");
+        }
     }
 </script>
 

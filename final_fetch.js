@@ -12,6 +12,7 @@ const HEADERS = {
     'Origin': 'https://www.sportybet.com'
 };
 
+// Serve the frontend
 app.use(express.static('public'));
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
@@ -26,7 +27,7 @@ function shuffleArray(arr) {
   return a;
 }
 
-// STRICT MAPPING: Only the 4 fields the API wants inside selections
+// EXACT MAPPING FOR ALL SPORTS (FOOTBALL & BASKETBALL)
 function formatSelectionsForSportyBet(group) {
     return group.map(g => {
         let marketId = "1";
@@ -110,11 +111,19 @@ async function tryBookGroup(initialGroup, fullPool, isStrict, usedIds) {
             const generatedCode = bookData.data && bookData.data.shareCode;
 
             if (bookData && bookData.bizCode === 10000 && generatedCode) {
+                // Extract total odds properly
+                let finalOdds = 'N/A';
+                if (bookData.data.combinedOdds) {
+                    finalOdds = bookData.data.combinedOdds;
+                } else if (bookData.data.ticket && bookData.data.ticket.totalOdds) {
+                    finalOdds = bookData.data.ticket.totalOdds;
+                }
+
                 return { 
                     success: true, 
                     newCode: generatedCode, 
                     url: `http://www.sportybet.com/ng/?shareCode=${generatedCode}`, 
-                    odds: bookData.data.combinedOdds || 'N/A', 
+                    odds: finalOdds, 
                     matchCount: currentGroup.length 
                 };
             } 

@@ -18,6 +18,10 @@
         .row { display: flex; gap: 15px; }
         .row .form-group { flex: 1; }
         
+        /* Identity Box (Email at the top) */
+        .identity-box { background: #252525; border: 1px solid #00e676; padding: 15px; border-radius: 8px; margin-bottom: 25px; }
+        .identity-box label { color: #00e676; margin-bottom: 5px; font-size: 14px; }
+        
         /* Buttons */
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
         button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
@@ -58,8 +62,14 @@
     <h1>SportyBet Splitter</h1>
     <p class="subtitle">Drop suspended matches and generate multiple codes instantly.</p>
 
+    <!-- EMAIL BOX AT THE TOP -->
+    <div class="identity-box">
+        <label>Step 1: Enter your Email</label>
+        <input type="email" id="paystackEmail" placeholder="Enter your email to track free splits or upgrade" style="padding: 12px; width: 100%; border-radius: 5px; background: #2a2a2a; color: white;">
+    </div>
+
     <div class="form-group">
-        <label>Original Booking Code</label>
+        <label>Step 2: Original Booking Code</label>
         <input type="text" id="bookingCode" placeholder="e.g. V4WNW6" style="text-transform: uppercase;" autocomplete="off">
     </div>
 
@@ -79,10 +89,9 @@
         <button id="shuffleBtn" class="btn-shuffle" onclick="processCode('shuffle')">SHUFFLE</button>
     </div>
 
-    <!-- AI Predict Button (Premium Feature) -->
     <button id="predictBtn" class="btn-predict" onclick="runAI()">✨ AI PREDICT (PREMIUM)</button>
     
-    <div id="loading">⏳ Generating codes... Please wait (Basketball may take longer due to odds changing)...</div>
+    <div id="loading">⏳ Generating codes... Please wait (Basketball may take longer)...</div>
 
     <div id="results"></div>
 
@@ -91,8 +100,6 @@
         <h3>⭐ Upgrade to Premium</h3>
         <p style="font-size: 14px; color: #ccc;">Get unlimited splits and AI predictions for just ₦200/week.</p>
         
-        <!-- The user MUST enter their email here to split (for the free limit to work) -->
-        <input type="email" id="paystackEmail" placeholder="Enter your email to split or subscribe" style="padding: 12px; width: 100%; margin-bottom: 10px; border-radius: 5px; background: #2a2a2a; color: white;">
         <button class="btn-subscribe" onclick="subscribe()">Subscribe Now (₦200/week)</button>
     </div>
 
@@ -113,7 +120,7 @@
         const code = document.getElementById('bookingCode').value.trim();
         const groupSize = parseInt(document.getElementById('groupSize').value);
         const maxGroups = parseInt(document.getElementById('maxGroups').value);
-        const userEmail = document.getElementById('paystackEmail').value.trim(); // Get email for limit check
+        const userEmail = document.getElementById('paystackEmail').value.trim(); 
         
         const splitBtn = document.getElementById('splitBtn');
         const shuffleBtn = document.getElementById('shuffleBtn');
@@ -121,19 +128,17 @@
         const loading = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
 
+        if (!userEmail) {
+            alert("Please enter your email in Step 1 to track your free splits.");
+            document.getElementById('paystackEmail').focus();
+            return;
+        }
+
         if (!code) {
             alert("Please enter a booking code!");
             return;
         }
 
-        // Check if email is provided for the free limit to work
-        if (!userEmail) {
-            alert("Please enter your email in the Premium box below to track your free splits.");
-            document.getElementById('paystackEmail').focus();
-            return;
-        }
-
-        // Reset UI
         splitBtn.disabled = true;
         shuffleBtn.disabled = true;
         predictBtn.disabled = true;
@@ -148,7 +153,7 @@
                     originalCode: code, 
                     groupSize: groupSize, 
                     maxGroups: maxGroups,
-                    userEmail: userEmail // <--- SEND EMAIL TO BACKEND
+                    userEmail: userEmail
                 })
             });
 
@@ -178,15 +183,13 @@
         }
     }
 
-    // Placeholder for the AI Feature
     function runAI() {
         alert("✨ AI Prediction is a Premium feature coming soon! Subscribe below for 200 Naira/week to unlock unlimited splits and AI predictions.");
     }
 
-    // Paystack Subscription Logic
     async function subscribe() {
         const email = document.getElementById('paystackEmail').value.trim();
-        if (!email) return alert("Please enter your email.");
+        if (!email) return alert("Please enter your email in Step 1.");
 
         try {
             const response = await fetch('/api/subscribe', {
@@ -199,14 +202,13 @@
             if (data.url) {
                 window.location.href = data.url;
             } else {
-                alert("Error: " + (data.error || "Could not initialize payment. Check your Paystack keys on Render."));
+                alert("Error: " + (data.error || "Could not initialize payment."));
             }
         } catch (error) {
             alert("Network error. Please try again.");
         }
     }
 
-    // Check for Paystack Success Redirect
     window.addEventListener('DOMContentLoaded', () => {
         const urlParams = new URLSearchParams(window.location.search);
         

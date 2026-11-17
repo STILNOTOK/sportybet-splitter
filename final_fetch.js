@@ -91,7 +91,7 @@ async function tryBookGroup(initialGroup, fullPool, isStrict, usedIds) {
         const formattedSelections = formatSelectionsForSportyBet(currentGroup);
 
         try {
-            // THE EXACT PAYLOAD WITH stake and orderType
+            // THE EXACT PAYLOAD FOR SPORTYBET API
             const payload = {
                 products: [1],
                 source: "web",
@@ -111,19 +111,26 @@ async function tryBookGroup(initialGroup, fullPool, isStrict, usedIds) {
             const generatedCode = bookData.data && bookData.data.shareCode;
 
             if (bookData && bookData.bizCode === 10000 && generatedCode) {
-                // Extract total odds properly
-                let finalOdds = 'N/A';
-                if (bookData.data.combinedOdds) {
-                    finalOdds = bookData.data.combinedOdds;
-                } else if (bookData.data.ticket && bookData.data.ticket.totalOdds) {
-                    finalOdds = bookData.data.ticket.totalOdds;
-                }
+                // CALCULATE ODDS MANUALLY
+                let computedOdds = 1;
+                let hasOdds = false;
+                
+                currentGroup.forEach(g => {
+                    let oddVal = g.odds ? parseFloat(g.odds) : 0;
+                    if (oddVal === 0 && g.markets && g.markets.length > 0 && g.markets[0].outcomes && g.markets[0].outcomes.length > 0) {
+                        oddVal = parseFloat(g.markets[0].outcomes[0].odds);
+                    }
+                    if (oddVal > 0) {
+                        computedOdds *= oddVal;
+                        hasOdds = true;
+                    }
+                });
 
                 return { 
                     success: true, 
                     newCode: generatedCode, 
                     url: `http://www.sportybet.com/ng/?shareCode=${generatedCode}`, 
-                    odds: finalOdds, 
+                    odds: hasOdds ? computedOdds.toFixed(2) : 'N/A', 
                     matchCount: currentGroup.length 
                 };
             } 

@@ -1,0 +1,32 @@
+<!-- Premium Subscription Section -->
+<div id="premiumSection" style="margin-top: 30px; border: 1px solid #9c27b0; padding: 20px; border-radius: 8px; background: #1e1e1e;">
+    <h3 style="color: #9c27b0;">Upgrade to Premium</h3>
+    <p style="font-size: 14px; color: #ccc;">Get unlimited splits and AI predictions for just ₦200/week.</p>
+    <input type="email" id="paystackEmail" placeholder="Enter your email" style="padding: 10px; width: 100%; margin-bottom: 10px; border-radius: 5px; border: 1px solid #333; background: #2a2a2a; color: white;">
+    <button onclick="subscribe()" style="padding: 10px 20px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%;">Subscribe Now</button>
+</div>
+
+<script>
+    async function subscribe() {
+        const email = document.getElementById('paystackEmail').value.trim();
+        if (!email) return alert("Please enter your email.");
+
+        try {
+            const response = await fetch('/api/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await response.json();
+            
+            if (data.url) {
+                // Redirect the user to Paystack Checkout
+                window.location.href = data.url;
+            } else {
+                alert("Error: " + (data.error || "Could not initialize payment."));
+            }
+        } catch (error) {
+            alert("Network error. Please try again.");
+        }
+    }
+</script>

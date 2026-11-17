@@ -1,231 +1,150 @@
 const express = require('express');
+const path = require('path');
 const app = express();
+
 app.use(express.json());
-
-const BASE = 'https://www.sportybet.com';
-const HEADERS = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'Current-Country': 'NG',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
-    'Referer': 'https://www.sportybet.com/ng/',
-    'Origin': 'https://www.sportybet.com'
-};
-
-// Serve the frontend
 app.use(express.static('public'));
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
+
+// ==========================================
+// CONFIGURATION (Use Environment Variables on Render)
+// ==========================================
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || 'sk_test_9b02d6f44690eff1e94f0b2fb9c0f1a288e34548';
+const PLAN_CODE = process.env.PAYSTACK_PLAN_CODE || 'PLN_tnjl24i4xux445x';
+const BASE_URL = process.env.BASE_URL || 'https://sportybet-splitter.onrender.com'; // Change to your Render URL in production
+
+// MOCK DATABASE (Replace with MongoDB/PostgreSQL later)
+// This stores emails and their premium status
+const userDB = {}; 
+// Format: { "user@example.com": { isPremium: true, validUntil: 1710000000000 } }
+
+// ==========================================
+// 1. PAYSTACK: INITIALIZE SUBSCRIPTION
+// ==========================================
+app.post('/api/subscribe', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required." });
+
+    try {
+        const response = await fetch('https://api.paystack.co/transaction/initialize', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${PAYSTACK_SECRET}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email: email,
+                plan: PLAN_CODE, // This automatically creates a recurring subscription
+                callback_url: `${BASE_URL}/verify-payment?email=${encodeURIComponent(email)}`
+            })
+        });
+
+        const data = await response.json();
+
+        if (!data.status) {
+            return res.status(400).json({ error: data.message });
+        }
+
+        // Send the checkout URL to the frontend to redirect the user
+        res.json({ url: data.data.authorization_url });
+    } catch (error) {
+        console.error("Paystack Init Error:", error);
+        res.status(500).json({ error: "Failed to initialize payment." });
+    }
 });
 
-function shuffleArray(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+// ==========================================
+// 2. PAYSTACK: VERIFY PAYMENT (Callback)
+// ==========================================
+app.get('/verify-payment', async (req, res) => {
+    const { reference, email } = req.query;
 
-// EXACT MAPPING FOR ALL SPORTS (FOOTBALL & BASKETBALL)
-function formatSelectionsForSportyBet(group) {
-    return group.map(g => {
-        let marketId = "1";
-        let outcomeId = "1";
-        let specifier = undefined;
+    if (!reference) return res.redirect('/?error=missing_reference');
 
-        if (g.markets && g.markets.length > 0) {
-            const market = g.markets[0];
-            marketId = String(market.id);
-            if (market.specifier) specifier = market.specifier;
-            if (market.outcomes && market.outcomes.length > 0) {
-                outcomeId = String(market.outcomes[0].id);
+    try {
+        const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${PAYSTACK_SECRET}`
             }
-        } else if (g.marketId && g.outcomeId) {
-            marketId = String(g.marketId);
-            outcomeId = String(g.outcomeId);
-            if (g.specifier) specifier = g.specifier;
-        }
+        });
 
-        const sel = { 
-            eventId: g.eventId, 
-            marketId: marketId, 
-            outcomeId: outcomeId 
-        };
-        
-        if (specifier && specifier.trim() !== '') {
-            sel.specifier = specifier;
-        }
-        
-        return sel;
-    });
-}
+        const data = await response.json();
 
-async function fetchMatches(code) {
-    const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
-    const json = await readRes.json();
-    if (!json || !json.data) return null;
-    
-    let allMatches = [];
-    if (json.data.outcomes) allMatches = json.data.outcomes;
-    else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
-
-    const uniqueMatches = [];
-    const seenIds = new Set();
-    for (const m of allMatches) {
-        if (!seenIds.has(m.eventId)) {
-            uniqueMatches.push(m);
-            seenIds.add(m.eventId);
-        }
-    }
-    return uniqueMatches;
-}
-
-async function tryBookGroup(initialGroup, fullPool, isStrict, usedIds) {
-    let currentGroup = [...initialGroup];
-    let attempts = 0;
-    let deadEventIds = new Set();
-
-    while (currentGroup.length > 0 && attempts < 15) {
-        attempts++;
-        const formattedSelections = formatSelectionsForSportyBet(currentGroup);
-
-        try {
-            // THE EXACT PAYLOAD FOR SPORTYBET API
-            const payload = {
-                products: [1],
-                source: "web",
-                acceptOddsChanges: true,
-                stake: 10,
-                orderType: 2,
-                selections: formattedSelections
+        if (data.status && data.data.status === 'success') {
+            // ✅ PAYMENT SUCCESSFUL! Upgrade the user in your database.
+            // In a real app, you would use: await User.updateOne({ email }, { isPremium: true, validUntil: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+            userDB[email] = {
+                isPremium: true,
+                validUntil: Date.now() + (7 * 24 * 60 * 60 * 1000) // 1 week from now
             };
-
-            const bookRes = await fetch(`${BASE}/api/ng/orders/share`, {
-                method: 'POST',
-                headers: HEADERS,
-                body: JSON.stringify(payload)
-            });
             
-            const bookData = await bookRes.json();
-            const generatedCode = bookData.data && bookData.data.shareCode;
-
-            if (bookData && bookData.bizCode === 10000 && generatedCode) {
-                // CALCULATE ODDS MANUALLY
-                let computedOdds = 1;
-                let hasOdds = false;
-                
-                currentGroup.forEach(g => {
-                    let oddVal = g.odds ? parseFloat(g.odds) : 0;
-                    if (oddVal === 0 && g.markets && g.markets.length > 0 && g.markets[0].outcomes && g.markets[0].outcomes.length > 0) {
-                        oddVal = parseFloat(g.markets[0].outcomes[0].odds);
-                    }
-                    if (oddVal > 0) {
-                        computedOdds *= oddVal;
-                        hasOdds = true;
-                    }
-                });
-
-                return { 
-                    success: true, 
-                    newCode: generatedCode, 
-                    url: `http://www.sportybet.com/ng/?shareCode=${generatedCode}`, 
-                    odds: hasOdds ? computedOdds.toFixed(2) : 'N/A', 
-                    matchCount: currentGroup.length 
-                };
-            } 
-            
-            if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
-                const badEventId = bookData.data.unavailableOutcomes[0].eventId;
-                console.log(`⚠️ Match ${badEventId} suspended. Replacing...`);
-                deadEventIds.add(badEventId);
-                
-                currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
-                
-                for (const m of fullPool) {
-                    if (currentGroup.length >= initialGroup.length) break;
-                    if (!deadEventIds.has(m.eventId) && !currentGroup.find(x => x.eventId === m.eventId)) {
-                        if (isStrict && usedIds.has(m.eventId)) continue;
-                        currentGroup.push(m);
-                        if (isStrict) usedIds.add(m.eventId);
-                    }
-                }
-            } else {
-                console.log(`❌ Rejected by SportyBet:`, JSON.stringify(bookData));
-                return { success: false };
-            }
-        } catch (err) {
-            console.log(`❌ Error:`, err.message);
-            return { success: false };
+            console.log(`✅ User ${email} upgraded to Premium!`);
+            res.redirect(`/?premium=success&email=${encodeURIComponent(email)}`);
+        } else {
+            res.redirect('/?error=payment_failed');
         }
-        await new Promise(r => setTimeout(r, 2500));
+    } catch (error) {
+        res.redirect('/?error=verification_error');
     }
-    return { success: false };
+});
+
+// ==========================================
+// 3. PAYSTACK: WEBHOOK (Handles recurring payments)
+// ==========================================
+app.post('/paystack/webhook', (req, res) => {
+    const event = req.body;
+
+    // Paystack sends 'charge.success' when the first payment is made
+    // and for every recurring weekly charge.
+    if (event.event === 'charge.success') {
+        const customerEmail = event.data.customer.email;
+        const planId = event.data.plan?.plan_code;
+
+        if (planId === PLAN_CODE) {
+            // Extend the user's premium access by another week
+            userDB[customerEmail] = {
+                isPremium: true,
+                validUntil: Date.now() + (7 * 24 * 60 * 60 * 1000)
+            };
+            console.log(`🔄 Recurring payment received for ${customerEmail}. Extended by 1 week.`);
+        }
+    }
+
+    // Always return 200 to tell Paystack you received the webhook
+    res.sendStatus(200);
+});
+
+// ==========================================
+// 4. CHECK PREMIUM STATUS (For your Split/Shuffle routes)
+// ==========================================
+function isUserPremium(email) {
+    const user = userDB[email];
+    if (!user || !user.isPremium) return false;
+    if (Date.now() > user.validUntil) {
+        user.isPremium = false; // Expired
+        return false;
+    }
+    return true;
 }
 
+// --- YOUR EXISTING SPLIT & SHUFFLE ENDPOINTS ---
+// (Keep your existing /api/split and /api/shuffle logic here)
+// You will add this check at the beginning of those routes:
+
+/* 
 app.post('/api/split', async (req, res) => {
-    try {
-        const { originalCode, groupSize, maxGroups } = req.body;
-        console.log(`\n--- STRICT SPLIT: ${originalCode} ---`);
-        
-        const matches = await fetchMatches(originalCode);
-        if (!matches) return res.status(400).json({ error: "Invalid code or blocked." });
-        if (matches.length < groupSize) return res.status(400).json({ error: "Not enough matches." });
-
-        const generated = [];
-        let availablePool = shuffleArray(matches); 
-        let globalUsedIds = new Set();
-
-        for (let i = 0; i < maxGroups; i++) {
-            let initialGroup = [];
-            for (let m of availablePool) {
-                if (!globalUsedIds.has(m.eventId)) {
-                    initialGroup.push(m);
-                    globalUsedIds.add(m.eventId);
-                }
-                if (initialGroup.length === groupSize) break;
-            }
-
-            if (initialGroup.length < groupSize) break;
-
-            const result = await tryBookGroup(initialGroup, availablePool, true, globalUsedIds);
-            if (result.success) generated.push(result);
-        }
-
-        if (generated.length === 0) return res.status(400).json({ error: "SportyBet rejected all groups." });
-        res.json({ codes: generated });
-
-    } catch (e) {
-        res.status(500).json({ error: e.message });
+    const { originalCode, groupSize, maxGroups, userEmail } = req.body;
+    
+    // Check if user is premium
+    if (!isUserPremium(userEmail)) {
+        // If you want to allow 2 free splits, you would check a counter here.
+        // For now, let's reject if not premium (or implement your free limit logic)
+        // return res.status(403).json({ error: "Upgrade to Premium for unlimited splits." });
     }
+    
+    // ... rest of your split logic
 });
-
-app.post('/api/shuffle', async (req, res) => {
-    try {
-        const { originalCode, groupSize, maxGroups } = req.body;
-        console.log(`\n--- SHUFFLE: ${originalCode} ---`);
-        
-        const matches = await fetchMatches(originalCode);
-        if (!matches) return res.status(400).json({ error: "Invalid code or blocked." });
-        if (matches.length < groupSize) return res.status(400).json({ error: "Not enough matches." });
-
-        const generated = [];
-
-        for (let i = 0; i < maxGroups; i++) {
-            const shuffledPool = shuffleArray(matches);
-            const initialGroup = shuffledPool.slice(0, groupSize);
-            
-            const result = await tryBookGroup(initialGroup, shuffledPool, false, new Set());
-            if (result.success) generated.push(result);
-        }
-
-        if (generated.length === 0) return res.status(400).json({ error: "SportyBet rejected all groups." });
-        res.json({ codes: generated });
-
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
+*/
 
 const PORT = process.env.PORT || 9000;
 app.listen(PORT, '0.0.0.0', () => {

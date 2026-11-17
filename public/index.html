@@ -112,6 +112,7 @@
         const code = document.getElementById('bookingCode').value.trim();
         const groupSize = parseInt(document.getElementById('groupSize').value);
         const maxGroups = parseInt(document.getElementById('maxGroups').value);
+        const userEmail = document.getElementById('paystackEmail').value.trim(); // Get email for limit check
         
         const splitBtn = document.getElementById('splitBtn');
         const shuffleBtn = document.getElementById('shuffleBtn');
@@ -135,7 +136,12 @@
             const response = await fetch('/api/' + action, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ originalCode: code, groupSize: groupSize, maxGroups: maxGroups })
+                body: JSON.stringify({ 
+                    originalCode: code, 
+                    groupSize: groupSize, 
+                    maxGroups: maxGroups,
+                    userEmail: userEmail // <--- SEND EMAIL TO BACKEND
+                })
             });
 
             const data = await response.json();
@@ -183,7 +189,6 @@
             const data = await response.json();
             
             if (data.url) {
-                // Redirect the user to Paystack Checkout
                 window.location.href = data.url;
             } else {
                 alert("Error: " + (data.error || "Could not initialize payment. Check your Paystack keys on Render."));
@@ -200,8 +205,6 @@
         if (urlParams.get('premium') === 'success') {
             const email = urlParams.get('email');
             alert(`🎉 Payment Successful! Welcome to Premium, ${email}. Your account is now unlocked.`);
-            
-            // Clean the URL so it looks professional
             window.history.replaceState({}, document.title, "/");
         }
         

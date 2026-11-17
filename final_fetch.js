@@ -3,7 +3,6 @@ const app = express();
 app.use(express.json());
 
 const BASE = 'https://www.sportybet.com';
-
 const HEADERS = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -13,180 +12,202 @@ const HEADERS = {
     'Origin': 'https://www.sportybet.com'
 };
 
+app.use(express.static('public'));
 app.get('/', (req, res) => {
-    res.send(`
-        <body style="background: #121212; color: white; padding: 20px; font-family: sans-serif; text-align: center;">
-            <h1 style="color: #00e676;">SportyBet Splitter (Fetch Mode)</h1>
-            <p style="color: #888;">Use a code with 10-15 upcoming matches.</p>
-            <input type="text" id="code" placeholder="Type code here" style="padding: 10px; font-size: 16px; text-transform: uppercase;">
-            <input type="number" id="size" value="5" style="padding: 10px; width: 60px;">
-            <input type="number" id="max" value="1" style="padding: 10px; width: 60px;"> 
-            <button onclick="split()" style="padding: 10px 20px; font-size: 16px; background: #00e676; border: none; font-weight: bold; cursor: pointer;">SPLIT</button>
-            <pre id="out" style="background: #000; color: #00e676; padding: 20px; margin-top: 20px; text-align: left; font-size: 14px; white-space: pre-wrap;"></pre>
-
-            <script>
-                async function split() {
-                    const code = document.getElementById('code').value.trim();
-                    const out = document.getElementById('out');
-                    out.innerText = "⏳ Processing...";
-                    
-                    try {
-                        const res = await fetch('/split?code=' + code + '&size=' + document.getElementById('size').value + '&max=' + document.getElementById('max').value);
-                        const data = await res.json();
-                        
-                        if (data.error) {
-                            out.innerText = "❌ ERROR: " + data.error;
-                            return;
-                        }
-                        
-                        let text = "✅ Found " + data.total + " matches in code " + code + "\\n\\n";
-                        text += "GENERATED CODES:\\n";
-                        if (data.codes.length === 0) {
-                            text += "❌ SportyBet rejected all combinations.\\n";
-                            text += "🔍 REASON:\\n" + data.lastError;
-                        } else {
-                            data.codes.forEach((c, i) => {
-                                text += "Group " + (i+1) + ": " + c.code + " (Odds: " + c.odds + ")\\n";
-                            });
-                        }
-                        out.innerText = text;
-                    } catch (e) {
-                        out.innerText = "❌ Network Error: " + e.message;
-                    }
-                }
-            </script>
-        </body>
-    `);
+    res.sendFile(__dirname + '/public/index.html');
 });
 
-function buildGroup(allMatches, size) {
-    const shuffled = [...allMatches].sort(() => Math.random() - 0.5);
-    const group = [];
-    const usedEventIds = new Set();
-
-    for (const match of shuffled) {
-        if (!usedEventIds.has(match.eventId)) {
-            group.push(match);
-            usedEventIds.add(match.eventId);
-        }
-        if (group.length === size) break;
-    }
-    return group;
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
-app.get('/split', async (req, res) => {
-    try {
-        const code = req.query.code;
-        const size = parseInt(req.query.size);
-        const max = parseInt(req.query.max);
-        
-        console.log(`\n--- PROCESSING: ${code} ---`);
+// STRICT MAPPING: Only the 4 fields the API wants inside selections
+function formatSelectionsForSportyBet(group) {
+    return group.map(g => {
+        let marketId = "1";
+        let outcomeId = "1";
+        let specifier = undefined;
 
-        const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
-        const json = await readRes.json();
-
-        if (!json || !json.data) {
-            return res.json({ error: "Invalid code or blocked by SportyBet." });
-        }
-
-        let allMatches = [];
-        if (json.data.outcomes) allMatches = json.data.outcomes;
-        else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
-
-        // 🚨 THIS IS THE LOGGING LINE 🚨
-        if (allMatches.length > 0) {
-            console.log("🔍 SAMPLE LEG DATA:", JSON.stringify(allMatches[0], null, 2));
-        }
-
-        const uniqueMatches = [];
-        const seenIds = new Set();
-        for (const m of allMatches) {
-            if (!seenIds.has(m.eventId)) {
-                uniqueMatches.push(m);
-                seenIds.add(m.eventId);
+        if (g.markets && g.markets.length > 0) {
+            const market = g.markets[0];
+            marketId = String(market.id);
+            if (market.specifier) specifier = market.specifier;
+            if (market.outcomes && market.outcomes.length > 0) {
+                outcomeId = String(market.outcomes[0].id);
             }
+        } else if (g.marketId && g.outcomeId) {
+            marketId = String(g.marketId);
+            outcomeId = String(g.outcomeId);
+            if (g.specifier) specifier = g.specifier;
         }
 
-        if (uniqueMatches.length < size) {
-            return res.json({ error: `Only ${uniqueMatches.length} unique matches found. Cannot make groups of ${size}.` });
+        const sel = { 
+            eventId: g.eventId, 
+            marketId: marketId, 
+            outcomeId: outcomeId 
+        };
+        
+        if (specifier && specifier.trim() !== '') {
+            sel.specifier = specifier;
         }
+        
+        return sel;
+    });
+}
+
+async function fetchMatches(code) {
+    const readRes = await fetch(`${BASE}/api/ng/orders/share/${code}?t=${Date.now()}`, { headers: HEADERS });
+    const json = await readRes.json();
+    if (!json || !json.data) return null;
+    
+    let allMatches = [];
+    if (json.data.outcomes) allMatches = json.data.outcomes;
+    else if (json.data.ticket && json.data.ticket.selections) allMatches = json.data.ticket.selections;
+
+    const uniqueMatches = [];
+    const seenIds = new Set();
+    for (const m of allMatches) {
+        if (!seenIds.has(m.eventId)) {
+            uniqueMatches.push(m);
+            seenIds.add(m.eventId);
+        }
+    }
+    return uniqueMatches;
+}
+
+async function tryBookGroup(initialGroup, fullPool, isStrict, usedIds) {
+    let currentGroup = [...initialGroup];
+    let attempts = 0;
+    let deadEventIds = new Set();
+
+    while (currentGroup.length > 0 && attempts < 15) {
+        attempts++;
+        const formattedSelections = formatSelectionsForSportyBet(currentGroup);
+
+        try {
+            // THE EXACT PAYLOAD WITH stake and orderType
+            const payload = {
+                products: [1],
+                source: "web",
+                acceptOddsChanges: true,
+                stake: 10,
+                orderType: 2,
+                selections: formattedSelections
+            };
+
+            const bookRes = await fetch(`${BASE}/api/ng/orders/share`, {
+                method: 'POST',
+                headers: HEADERS,
+                body: JSON.stringify(payload)
+            });
+            
+            const bookData = await bookRes.json();
+            const generatedCode = bookData.data && bookData.data.shareCode;
+
+            if (bookData && bookData.bizCode === 10000 && generatedCode) {
+                return { 
+                    success: true, 
+                    newCode: generatedCode, 
+                    url: `http://www.sportybet.com/ng/?shareCode=${generatedCode}`, 
+                    odds: bookData.data.combinedOdds || 'N/A', 
+                    matchCount: currentGroup.length 
+                };
+            } 
+            
+            if (bookData && bookData.data && bookData.data.unavailableOutcomes) {
+                const badEventId = bookData.data.unavailableOutcomes[0].eventId;
+                console.log(`⚠️ Match ${badEventId} suspended. Replacing...`);
+                deadEventIds.add(badEventId);
+                
+                currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
+                
+                for (const m of fullPool) {
+                    if (currentGroup.length >= initialGroup.length) break;
+                    if (!deadEventIds.has(m.eventId) && !currentGroup.find(x => x.eventId === m.eventId)) {
+                        if (isStrict && usedIds.has(m.eventId)) continue;
+                        currentGroup.push(m);
+                        if (isStrict) usedIds.add(m.eventId);
+                    }
+                }
+            } else {
+                console.log(`❌ Rejected by SportyBet:`, JSON.stringify(bookData));
+                return { success: false };
+            }
+        } catch (err) {
+            console.log(`❌ Error:`, err.message);
+            return { success: false };
+        }
+        await new Promise(r => setTimeout(r, 2500));
+    }
+    return { success: false };
+}
+
+app.post('/api/split', async (req, res) => {
+    try {
+        const { originalCode, groupSize, maxGroups } = req.body;
+        console.log(`\n--- STRICT SPLIT: ${originalCode} ---`);
+        
+        const matches = await fetchMatches(originalCode);
+        if (!matches) return res.status(400).json({ error: "Invalid code or blocked." });
+        if (matches.length < groupSize) return res.status(400).json({ error: "Not enough matches." });
 
         const generated = [];
-        let lastError = "None";
-        
-        for (let i = 0; i < max; i++) {
-            console.log(`Generating Group ${i+1}...`);
-            
-            let currentGroup = buildGroup(uniqueMatches, size);
-            let success = false;
-            let attempts = 0;
+        let availablePool = shuffleArray(matches); 
+        let globalUsedIds = new Set();
 
-            while (!success && currentGroup.length > 0 && attempts < 5) { 
-                attempts++;
-                
-                const selections = currentGroup.map(m => {
-                    const sel = {
-                        eventId: m.eventId,
-                        marketId: String(m.marketId),
-                        outcomeId: String(m.outcomeId)
-                    };
-                    if (m.specifier && typeof m.specifier === 'string' && m.specifier.trim() !== '') {
-                        sel.specifier = m.specifier;
-                    }
-                    return sel;
-                });
-
-                try {
-                    // PAYLOAD WITH STAKE AND PRODUCTS
-                    const payload = { 
-                        products: [1],
-                        source: "web",
-                        acceptOddsChanges: true,
-                        stake: 10,
-                        selections
-                    };
-                    
-                    await new Promise(r => setTimeout(r, 2000));
-
-                    const bookRes = await fetch(`${BASE}/api/ng/orders/share`, {
-                        method: 'POST',
-                        headers: HEADERS,
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    const bookData = await bookRes.json();
-                    const generatedCode = bookData.shareCode || bookData.bookingCode || (bookData.data && (bookData.data.shareCode || bookData.data.bookingCode));
-
-                    if (bookData && bookData.success === true && generatedCode) {
-                        console.log(`✅ Success: ${generatedCode}`);
-                        generated.push({
-                            code: generatedCode,
-                            odds: bookData.combinedOdds || 'N/A'
-                        });
-                        success = true;
-                    } else if (bookData && bookData.error && bookData.error.code === "VALIDATION_FAILED" && bookData.error.details) {
-                        const badEventId = bookData.error.details[0].eventId;
-                        console.log(`⚠️ Match ${badEventId} suspended. Retrying...`);
-                        currentGroup = currentGroup.filter(m => m.eventId !== badEventId);
-                    } else {
-                        lastError = JSON.stringify(bookData); 
-                        console.log(`❌ Rejected:`, lastError);
-                        currentGroup.pop();
-                    }
-                } catch (err) {
-                    lastError = err.message;
-                    console.log(`❌ Error:`, lastError);
-                    currentGroup.pop();
+        for (let i = 0; i < maxGroups; i++) {
+            let initialGroup = [];
+            for (let m of availablePool) {
+                if (!globalUsedIds.has(m.eventId)) {
+                    initialGroup.push(m);
+                    globalUsedIds.add(m.eventId);
                 }
+                if (initialGroup.length === groupSize) break;
             }
-            await new Promise(r => setTimeout(r, 1500));
+
+            if (initialGroup.length < groupSize) break;
+
+            const result = await tryBookGroup(initialGroup, availablePool, true, globalUsedIds);
+            if (result.success) generated.push(result);
         }
 
-        res.json({ total: uniqueMatches.length, codes: generated, lastError: lastError });
+        if (generated.length === 0) return res.status(400).json({ error: "SportyBet rejected all groups." });
+        res.json({ codes: generated });
 
     } catch (e) {
-        console.error("SERVER ERROR:", e.message);
-        res.json({ error: e.message });
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/shuffle', async (req, res) => {
+    try {
+        const { originalCode, groupSize, maxGroups } = req.body;
+        console.log(`\n--- SHUFFLE: ${originalCode} ---`);
+        
+        const matches = await fetchMatches(originalCode);
+        if (!matches) return res.status(400).json({ error: "Invalid code or blocked." });
+        if (matches.length < groupSize) return res.status(400).json({ error: "Not enough matches." });
+
+        const generated = [];
+
+        for (let i = 0; i < maxGroups; i++) {
+            const shuffledPool = shuffleArray(matches);
+            const initialGroup = shuffledPool.slice(0, groupSize);
+            
+            const result = await tryBookGroup(initialGroup, shuffledPool, false, new Set());
+            if (result.success) generated.push(result);
+        }
+
+        if (generated.length === 0) return res.status(400).json({ error: "SportyBet rejected all groups." });
+        res.json({ codes: generated });
+
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 

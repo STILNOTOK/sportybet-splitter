@@ -192,6 +192,24 @@
             alert("Network error. Please try again.");
         }
     }
+
+    // Check for Paystack Success Redirect
+    window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        if (urlParams.get('premium') === 'success') {
+            const email = urlParams.get('email');
+            alert(`🎉 Payment Successful! Welcome to Premium, ${email}. Your account is now unlocked.`);
+            
+            // Clean the URL so it looks professional
+            window.history.replaceState({}, document.title, "/");
+        }
+        
+        if (urlParams.get('error')) {
+            alert(`❌ Payment Error: ${urlParams.get('error')}`);
+            window.history.replaceState({}, document.title, "/");
+        }
+    });
 </script>
 
 </body>

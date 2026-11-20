@@ -10,7 +10,6 @@
         .container { background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); width: 100%; max-width: 600px; }
         h1 { text-align: center; color: #00e676; margin-bottom: 5px; }
         p.subtitle { text-align: center; color: #aaa; margin-bottom: 30px; font-size: 14px; }
-        
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; font-weight: bold; color: #ddd; }
         input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #2a2a2a; color: white; font-size: 16px; }
@@ -18,18 +17,15 @@
         .row { display: flex; gap: 15px; }
         .row .form-group { flex: 1; }
         
-        /* Auth Box */
         #authSection { background: #252525; border: 1px solid #00e676; padding: 20px; border-radius: 8px; margin-bottom: 25px; }
         #authSection h3 { color: #00e676; margin-top: 0; text-align: center; }
         .btn-auth { background: #00e676; color: #000; width: 100%; padding: 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .toggle-text { text-align: center; margin-top: 15px; cursor: pointer; color: #aaa; font-size: 14px; text-decoration: underline; }
         
-        /* Main App */
         #appSection { display: none; }
         .user-info { text-align: right; font-size: 14px; margin-bottom: 15px; color: #aaa; }
         .logout-btn { color: #ff5252; cursor: pointer; text-decoration: underline; margin-left: 10px; }
 
-        /* Buttons */
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
         button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-split { background: #00e676; color: #000; }
@@ -40,7 +36,6 @@
         .btn-predict:hover { background: #7b1fa2; }
         button:disabled { background: #555; cursor: not-allowed; border-color: #555; }
         
-        /* Loading & Results */
         #loading { display: none; text-align: center; margin-top: 20px; color: #00e676; font-weight: bold; }
         #results { margin-top: 30px; }
         .code-card { background: #2a2a2a; border-left: 4px solid #00e676; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
@@ -48,14 +43,10 @@
         .code-card a { color: #00e676; text-decoration: none; word-break: break-all; font-size: 14px; }
         .code-card a:hover { text-decoration: underline; }
         .error { color: #ff5252; background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 6px; text-align: center; border-left: 4px solid #ff5252; }
-        
-        /* Explanations & Disclaimer */
         .info-section { margin-top: 30px; font-size: 13px; color: #aaa; border-top: 1px solid #333; padding-top: 15px; }
         .info-section h3 { color: #00e676; font-size: 15px; margin-bottom: 5px; margin-top: 15px; }
         .info-section p { margin-top: 5px; line-height: 1.4; }
         .disclaimer { margin-top: 20px; font-size: 12px; color: #ff5252; background: rgba(255, 82, 82, 0.05); padding: 10px; border-radius: 6px; border: 1px dashed #ff5252; line-height: 1.4; }
-
-        /* Premium Box */
         #premiumBox { margin-top: 30px; border: 2px solid #9c27b0; padding: 20px; border-radius: 8px; background: #1a1a1a; }
         #premiumBox h3 { color: #9c27b0; margin-top: 0; }
         .btn-subscribe { padding: 12px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; }
@@ -68,7 +59,6 @@
     <h1>SportyBet Splitter</h1>
     <p class="subtitle">Drop suspended matches and generate multiple codes instantly.</p>
 
-    <!-- LOGIN / REGISTER SECTION -->
     <div id="authSection">
         <h3 id="authTitle">Login to Continue</h3>
         <input type="email" id="authEmail" placeholder="Email" style="margin-bottom: 10px;">
@@ -79,18 +69,15 @@
         </p>
     </div>
 
-    <!-- MAIN APP SECTION (Hidden until login) -->
     <div id="appSection">
         <div class="user-info">
             Logged in as: <strong id="displayEmail"></strong>
             <span class="logout-btn" onclick="logout()">Logout</span>
         </div>
-
         <div class="form-group">
             <label>Original Booking Code</label>
             <input type="text" id="bookingCode" placeholder="e.g. V4WNW6" style="text-transform: uppercase;" autocomplete="off">
         </div>
-
         <div class="row">
             <div class="form-group">
                 <label>Matches per Code</label>
@@ -101,17 +88,13 @@
                 <input type="number" id="maxGroups" value="2" min="1" max="10">
             </div>
         </div>
-
         <div class="button-group">
             <button id="splitBtn" class="btn-split" onclick="processCode('split')">STRICT SPLIT</button>
             <button id="shuffleBtn" class="btn-shuffle" onclick="processCode('shuffle')">SHUFFLE</button>
         </div>
-
         <button id="predictBtn" class="btn-predict" onclick="runAI()">✨ AI PREDICT (PREMIUM)</button>
-        
-        <div id="loading">⏳ Generating codes... Please wait...</div>
+        <div id="loading">⏳ Generating codes...</div>
         <div id="results"></div>
-
         <div id="premiumBox">
             <h3>⭐ Upgrade to Premium</h3>
             <p style="font-size: 14px; color: #ccc;">Get unlimited splits and AI predictions for just ₦200/week.</p>
@@ -119,14 +102,12 @@
         </div>
     </div>
 
-    <!-- Write-up and Disclaimer -->
     <div class="info-section">
         <h3>How It Works</h3>
-        <p><strong>STRICT SPLIT:</strong> Divides your original code into completely separate groups. If a game is in Group 1, it will <strong>never</strong> appear in Group 2. Perfect for spreading risk across completely different matches.</p>
-        <p><strong>SHUFFLE:</strong> Randomly selects games for each group. Games from Group 1 <strong>can</strong> appear in Group 2, giving you a fresh, randomized combination every time while keeping your favorite picks in the mix.</p>
-        
+        <p><strong>STRICT SPLIT:</strong> Divides your original code into completely separate groups. If a game is in Group 1, it will <strong>never</strong> appear in Group 2.</p>
+        <p><strong>SHUFFLE:</strong> Randomly selects games for each group. Games from Group 1 <strong>can</strong> appear in Group 2.</p>
         <div class="disclaimer">
-            <strong>⚠️ BET RESPONSIBLY:</strong> This tool does not guarantee winning. Odds and match availability are based on SportyBet's live API and are subject to change. Please bet wisely and only with money you can afford to lose. 18+ only.
+            <strong>⚠️ BET RESPONSIBLY:</strong> This tool does not guarantee winning. Please bet wisely and only with money you can afford to lose. 18+ only.
         </div>
     </div>
 </div>
@@ -145,36 +126,25 @@
         const email = document.getElementById('authEmail').value.trim();
         const password = document.getElementById('authPassword').value.trim();
         const endpoint = isLoginMode ? '/api/login' : '/api/register';
-
         if (!email || !password) return alert("Please fill in all fields.");
-
         try {
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
+            const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
             const data = await res.json();
-
             if (data.error) return alert(data.error);
-
             if (isLoginMode) {
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('email', email);
                 checkLogin();
             } else {
-                alert("Registration successful! Please login.");
+                alert(data.message);
                 toggleAuthMode();
             }
-        } catch (err) {
-            alert("Network error. Please try again.");
-        }
+        } catch (err) { alert("Network error. Please try again."); }
     }
 
     function checkLogin() {
         const token = localStorage.getItem('token');
         const email = localStorage.getItem('email');
-
         if (token) {
             document.getElementById('authSection').style.display = 'none';
             document.getElementById('appSection').style.display = 'block';
@@ -196,92 +166,73 @@
         const groupSize = parseInt(document.getElementById('groupSize').value);
         const maxGroups = parseInt(document.getElementById('maxGroups').value);
         const token = localStorage.getItem('token');
-
         const splitBtn = document.getElementById('splitBtn');
         const shuffleBtn = document.getElementById('shuffleBtn');
         const predictBtn = document.getElementById('predictBtn');
         const loading = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
-
         if (!code) return alert("Please enter a booking code!");
-
-        splitBtn.disabled = true;
-        shuffleBtn.disabled = true;
-        predictBtn.disabled = true;
-        loading.style.display = 'block';
-        resultsDiv.innerHTML = '';
-
+        splitBtn.disabled = true; shuffleBtn.disabled = true; predictBtn.disabled = true;
+        loading.style.display = 'block'; resultsDiv.innerHTML = '';
         try {
             const response = await fetch('/api/' + action, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ originalCode: code, groupSize, maxGroups })
             });
-
             const data = await response.json();
-
             if (response.ok && data.codes) {
                 data.codes.forEach((group, index) => {
                     const card = document.createElement('div');
                     card.className = 'code-card';
-                    card.innerHTML = `
-                        <h3>Group ${index + 1} (${group.matchCount} matches)</h3>
-                        <p style="margin: 5px 0 10px 0; font-size: 14px; color: #aaa;">Total Odds: <strong>${group.odds || 'N/A'}</strong></p>
-                        <a href="${group.url}" target="_blank">Code: ${group.newCode}</a>
-                    `;
+                    card.innerHTML = `<h3>Group ${index + 1} (${group.matchCount} matches)</h3><p style="margin: 5px 0 10px 0; font-size: 14px; color: #aaa;">Total Odds: <strong>${group.odds || 'N/A'}</strong></p><a href="${group.url}" target="_blank">Code: ${group.newCode}</a>`;
                     resultsDiv.appendChild(card);
                 });
-            } else {
-                resultsDiv.innerHTML = `<div class="error">❌ ${data.error || 'Failed to generate codes.'}</div>`;
-            }
-        } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`;
-        } finally {
-            splitBtn.disabled = false;
-            shuffleBtn.disabled = false;
-            predictBtn.disabled = false;
-            loading.style.display = 'none';
-        }
+            } else { resultsDiv.innerHTML = `<div class="error">❌ ${data.error || 'Failed to generate codes.'}</div>`; }
+        } catch (err) { resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`; }
+        finally { splitBtn.disabled = false; shuffleBtn.disabled = false; predictBtn.disabled = false; loading.style.display = 'none'; }
     }
 
-    function runAI() {
-        alert("✨ AI Prediction is a Premium feature coming soon! Subscribe below for 200 Naira/week to unlock unlimited splits and AI predictions.");
+    async function runAI() {
+        const code = document.getElementById('bookingCode').value.trim();
+        const token = localStorage.getItem('token');
+        const resultsDiv = document.getElementById('results');
+        if (!code) return alert("Please enter a booking code first.");
+        resultsDiv.innerHTML = '<p style="color: #9c27b0; font-weight: bold;">🔮 Analyzing match probabilities...</p>';
+        try {
+            const res = await fetch('/api/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ originalCode: code })
+            });
+            const data = await res.json();
+            if (data.error) { resultsDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`; return; }
+            if (data.predictions.length === 0) { resultsDiv.innerHTML = '<p style="color: #ff5252;">No predictions found for these matches.</p>'; return; }
+            let html = '<h3 style="color: #9c27b0;">🔮 AI Predictions</h3>';
+            data.predictions.forEach(p => {
+                html += `<div class="code-card" style="border-left-color: #9c27b0;"><h3>${p.match}</h3><p style="margin: 5px 0; font-size: 14px; color: #ccc;">Pick: <strong style="color: #fff;">${p.pick}</strong></p><p style="margin: 5px 0; font-size: 14px; color: #ccc;">Probability: <strong style="color: #00e676;">${p.probability}</strong></p><p style="margin: 5px 0; font-size: 14px; color: #ccc;">Fair Odds: <strong style="color: #fff;">${p.fairOdds}</strong></p><p style="margin: 5px 0; font-size: 12px; color: #aaa; font-style: italic;">${p.verdict}</p></div>`;
+            });
+            resultsDiv.innerHTML = html;
+        } catch (err) { resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`; }
     }
 
     async function subscribe() {
         const token = localStorage.getItem('token');
         if (!token) return alert("Please login first.");
-
         try {
-            const response = await fetch('/api/subscribe', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const response = await fetch('/api/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
             const data = await response.json();
-            
-            if (data.url) {
-                window.location.href = data.url;
-            } else {
-                alert("Error: " + (data.error || "Could not initialize payment."));
-            }
-        } catch (error) {
-            alert("Network error. Please try again.");
-        }
+            if (data.url) { window.location.href = data.url; }
+            else { alert("Error: " + (data.error || "Could not initialize payment.")); }
+        } catch (error) { alert("Network error. Please try again."); }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
         checkLogin();
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('premium') === 'success') {
-            alert(`🎉 Payment Successful! Welcome to Premium.`);
-            window.history.replaceState({}, document.title, "/");
-        }
+        if (urlParams.get('premium') === 'success') { alert(`🎉 Payment Successful! Welcome to Premium.`); window.history.replaceState({}, document.title, "/"); }
+        if (urlParams.get('verified') === 'success') { alert(`✅ Email Verified! You can now login.`); window.history.replaceState({}, document.title, "/"); }
+        if (urlParams.get('error')) { alert(`❌ Error: ${urlParams.get('error')}`); window.history.replaceState({}, document.title, "/"); }
     });
 </script>
 

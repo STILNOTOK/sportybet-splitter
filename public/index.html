@@ -18,10 +18,17 @@
         .row { display: flex; gap: 15px; }
         .row .form-group { flex: 1; }
         
-        /* Identity Box (Email at the top) */
-        .identity-box { background: #252525; border: 1px solid #00e676; padding: 15px; border-radius: 8px; margin-bottom: 25px; }
-        .identity-box label { color: #00e676; margin-bottom: 5px; font-size: 14px; }
+        /* Auth Box */
+        #authSection { background: #252525; border: 1px solid #00e676; padding: 20px; border-radius: 8px; margin-bottom: 25px; }
+        #authSection h3 { color: #00e676; margin-top: 0; text-align: center; }
+        .btn-auth { background: #00e676; color: #000; width: 100%; padding: 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .toggle-text { text-align: center; margin-top: 15px; cursor: pointer; color: #aaa; font-size: 14px; text-decoration: underline; }
         
+        /* Main App */
+        #appSection { display: none; }
+        .user-info { text-align: right; font-size: 14px; margin-bottom: 15px; color: #aaa; }
+        .logout-btn { color: #ff5252; cursor: pointer; text-decoration: underline; margin-left: 10px; }
+
         /* Buttons */
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
         button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
@@ -51,7 +58,6 @@
         /* Premium Box */
         #premiumBox { margin-top: 30px; border: 2px solid #9c27b0; padding: 20px; border-radius: 8px; background: #1a1a1a; }
         #premiumBox h3 { color: #9c27b0; margin-top: 0; }
-        #premiumBox input { border: 1px solid #9c27b0; }
         .btn-subscribe { padding: 12px; background: #9c27b0; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; }
         .btn-subscribe:hover { background: #7b1fa2; }
     </style>
@@ -62,45 +68,55 @@
     <h1>SportyBet Splitter</h1>
     <p class="subtitle">Drop suspended matches and generate multiple codes instantly.</p>
 
-    <!-- EMAIL BOX AT THE TOP -->
-    <div class="identity-box">
-        <label>Step 1: Enter your Email</label>
-        <input type="email" id="paystackEmail" placeholder="Enter your email to track free splits or upgrade" style="padding: 12px; width: 100%; border-radius: 5px; background: #2a2a2a; color: white;">
+    <!-- LOGIN / REGISTER SECTION -->
+    <div id="authSection">
+        <h3 id="authTitle">Login to Continue</h3>
+        <input type="email" id="authEmail" placeholder="Email" style="margin-bottom: 10px;">
+        <input type="password" id="authPassword" placeholder="Password" style="margin-bottom: 10px;">
+        <button class="btn-auth" onclick="handleAuth()" id="authBtn">Login</button>
+        <p class="toggle-text" onclick="toggleAuthMode()">
+            <span id="authToggleText">Need an account? Register</span>
+        </p>
     </div>
 
-    <div class="form-group">
-        <label>Step 2: Original Booking Code</label>
-        <input type="text" id="bookingCode" placeholder="e.g. V4WNW6" style="text-transform: uppercase;" autocomplete="off">
-    </div>
-
-    <div class="row">
-        <div class="form-group">
-            <label>Matches per Code</label>
-            <input type="number" id="groupSize" value="5" min="2" max="50">
+    <!-- MAIN APP SECTION (Hidden until login) -->
+    <div id="appSection">
+        <div class="user-info">
+            Logged in as: <strong id="displayEmail"></strong>
+            <span class="logout-btn" onclick="logout()">Logout</span>
         </div>
+
         <div class="form-group">
-            <label>Max Codes</label>
-            <input type="number" id="maxGroups" value="2" min="1" max="10">
+            <label>Original Booking Code</label>
+            <input type="text" id="bookingCode" placeholder="e.g. V4WNW6" style="text-transform: uppercase;" autocomplete="off">
         </div>
-    </div>
 
-    <div class="button-group">
-        <button id="splitBtn" class="btn-split" onclick="processCode('split')">STRICT SPLIT</button>
-        <button id="shuffleBtn" class="btn-shuffle" onclick="processCode('shuffle')">SHUFFLE</button>
-    </div>
+        <div class="row">
+            <div class="form-group">
+                <label>Matches per Code</label>
+                <input type="number" id="groupSize" value="5" min="2" max="50">
+            </div>
+            <div class="form-group">
+                <label>Max Codes</label>
+                <input type="number" id="maxGroups" value="2" min="1" max="10">
+            </div>
+        </div>
 
-    <button id="predictBtn" class="btn-predict" onclick="runAI()">✨ AI PREDICT (PREMIUM)</button>
-    
-    <div id="loading">⏳ Generating codes... Please wait (Basketball may take longer)...</div>
+        <div class="button-group">
+            <button id="splitBtn" class="btn-split" onclick="processCode('split')">STRICT SPLIT</button>
+            <button id="shuffleBtn" class="btn-shuffle" onclick="processCode('shuffle')">SHUFFLE</button>
+        </div>
 
-    <div id="results"></div>
-
-    <!-- PREMIUM SUBSCRIPTION BOX -->
-    <div id="premiumBox">
-        <h3>⭐ Upgrade to Premium</h3>
-        <p style="font-size: 14px; color: #ccc;">Get unlimited splits and AI predictions for just ₦200/week.</p>
+        <button id="predictBtn" class="btn-predict" onclick="runAI()">✨ AI PREDICT (PREMIUM)</button>
         
-        <button class="btn-subscribe" onclick="subscribe()">Subscribe Now (₦200/week)</button>
+        <div id="loading">⏳ Generating codes... Please wait...</div>
+        <div id="results"></div>
+
+        <div id="premiumBox">
+            <h3>⭐ Upgrade to Premium</h3>
+            <p style="font-size: 14px; color: #ccc;">Get unlimited splits and AI predictions for just ₦200/week.</p>
+            <button class="btn-subscribe" onclick="subscribe()">Subscribe Now (₦200/week)</button>
+        </div>
     </div>
 
     <!-- Write-up and Disclaimer -->
@@ -116,28 +132,78 @@
 </div>
 
 <script>
+    let isLoginMode = true;
+
+    function toggleAuthMode() {
+        isLoginMode = !isLoginMode;
+        document.getElementById('authTitle').innerText = isLoginMode ? "Login to Continue" : "Create an Account";
+        document.getElementById('authBtn').innerText = isLoginMode ? "Login" : "Register";
+        document.getElementById('authToggleText').innerText = isLoginMode ? "Need an account? Register" : "Already have an account? Login";
+    }
+
+    async function handleAuth() {
+        const email = document.getElementById('authEmail').value.trim();
+        const password = document.getElementById('authPassword').value.trim();
+        const endpoint = isLoginMode ? '/api/login' : '/api/register';
+
+        if (!email || !password) return alert("Please fill in all fields.");
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+
+            if (data.error) return alert(data.error);
+
+            if (isLoginMode) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('email', email);
+                checkLogin();
+            } else {
+                alert("Registration successful! Please login.");
+                toggleAuthMode();
+            }
+        } catch (err) {
+            alert("Network error. Please try again.");
+        }
+    }
+
+    function checkLogin() {
+        const token = localStorage.getItem('token');
+        const email = localStorage.getItem('email');
+
+        if (token) {
+            document.getElementById('authSection').style.display = 'none';
+            document.getElementById('appSection').style.display = 'block';
+            document.getElementById('displayEmail').innerText = email;
+        } else {
+            document.getElementById('authSection').style.display = 'block';
+            document.getElementById('appSection').style.display = 'none';
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('email');
+        checkLogin();
+    }
+
     async function processCode(action) {
         const code = document.getElementById('bookingCode').value.trim();
         const groupSize = parseInt(document.getElementById('groupSize').value);
         const maxGroups = parseInt(document.getElementById('maxGroups').value);
-        const userEmail = document.getElementById('paystackEmail').value.trim(); 
-        
+        const token = localStorage.getItem('token');
+
         const splitBtn = document.getElementById('splitBtn');
         const shuffleBtn = document.getElementById('shuffleBtn');
         const predictBtn = document.getElementById('predictBtn');
         const loading = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
 
-        if (!userEmail) {
-            alert("Please enter your email in Step 1 to track your free splits.");
-            document.getElementById('paystackEmail').focus();
-            return;
-        }
-
-        if (!code) {
-            alert("Please enter a booking code!");
-            return;
-        }
+        if (!code) return alert("Please enter a booking code!");
 
         splitBtn.disabled = true;
         shuffleBtn.disabled = true;
@@ -148,13 +214,11 @@
         try {
             const response = await fetch('/api/' + action, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    originalCode: code, 
-                    groupSize: groupSize, 
-                    maxGroups: maxGroups,
-                    userEmail: userEmail
-                })
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ originalCode: code, groupSize, maxGroups })
             });
 
             const data = await response.json();
@@ -188,14 +252,16 @@
     }
 
     async function subscribe() {
-        const email = document.getElementById('paystackEmail').value.trim();
-        if (!email) return alert("Please enter your email in Step 1.");
+        const token = localStorage.getItem('token');
+        if (!token) return alert("Please login first.");
 
         try {
             const response = await fetch('/api/subscribe', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
             });
             const data = await response.json();
             
@@ -210,16 +276,10 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+        checkLogin();
         const urlParams = new URLSearchParams(window.location.search);
-        
         if (urlParams.get('premium') === 'success') {
-            const email = urlParams.get('email');
-            alert(`🎉 Payment Successful! Welcome to Premium, ${email}. Your account is now unlocked.`);
-            window.history.replaceState({}, document.title, "/");
-        }
-        
-        if (urlParams.get('error')) {
-            alert(`❌ Payment Error: ${urlParams.get('error')}`);
+            alert(`🎉 Payment Successful! Welcome to Premium.`);
             window.history.replaceState({}, document.title, "/");
         }
     });

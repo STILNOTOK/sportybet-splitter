@@ -11,6 +11,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.12.2",
+    "nodemailer": "^10.6.1",
     "paystack-api": "^2.0.6"
   }
 }

@@ -126,11 +126,19 @@
         const email = document.getElementById('authEmail').value.trim();
         const password = document.getElementById('authPassword').value.trim();
         const endpoint = isLoginMode ? '/api/login' : '/api/register';
+        
         if (!email || !password) return alert("Please fill in all fields.");
+        
         try {
-            const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+            const res = await fetch(endpoint, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ email, password }) 
+            });
             const data = await res.json();
+            
             if (data.error) return alert(data.error);
+            
             if (isLoginMode) {
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('email', email);
@@ -139,7 +147,9 @@
                 alert(data.message);
                 toggleAuthMode();
             }
-        } catch (err) { alert("Network error. Please try again."); }
+        } catch (err) { 
+            alert("Network error. Please try again."); 
+        }
     }
 
     function checkLogin() {
@@ -171,9 +181,12 @@
         const predictBtn = document.getElementById('predictBtn');
         const loading = document.getElementById('loading');
         const resultsDiv = document.getElementById('results');
+        
         if (!code) return alert("Please enter a booking code!");
+        
         splitBtn.disabled = true; shuffleBtn.disabled = true; predictBtn.disabled = true;
         loading.style.display = 'block'; resultsDiv.innerHTML = '';
+        
         try {
             const response = await fetch('/api/' + action, {
                 method: 'POST',
@@ -181,6 +194,7 @@
                 body: JSON.stringify({ originalCode: code, groupSize, maxGroups })
             });
             const data = await response.json();
+            
             if (response.ok && data.codes) {
                 data.codes.forEach((group, index) => {
                     const card = document.createElement('div');
@@ -188,51 +202,52 @@
                     card.innerHTML = `<h3>Group ${index + 1} (${group.matchCount} matches)</h3><p style="margin: 5px 0 10px 0; font-size: 14px; color: #aaa;">Total Odds: <strong>${group.odds || 'N/A'}</strong></p><a href="${group.url}" target="_blank">Code: ${group.newCode}</a>`;
                     resultsDiv.appendChild(card);
                 });
-            } else { resultsDiv.innerHTML = `<div class="error">❌ ${data.error || 'Failed to generate codes.'}</div>`; }
-        } catch (err) { resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`; }
-        finally { splitBtn.disabled = false; shuffleBtn.disabled = false; predictBtn.disabled = false; loading.style.display = 'none'; }
+            } else { 
+                resultsDiv.innerHTML = `<div class="error">❌ ${data.error || 'Failed to generate codes.'}</div>`; 
+            }
+        } catch (err) { 
+            resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`; 
+        } finally { 
+            splitBtn.disabled = false; shuffleBtn.disabled = false; predictBtn.disabled = false; loading.style.display = 'none'; 
+        }
     }
 
-    async function runAI() {
-        const code = document.getElementById('bookingCode').value.trim();
-        const token = localStorage.getItem('token');
-        const resultsDiv = document.getElementById('results');
-        if (!code) return alert("Please enter a booking code first.");
-        resultsDiv.innerHTML = '<p style="color: #9c27b0; font-weight: bold;">🔮 Analyzing match probabilities...</p>';
-        try {
-            const res = await fetch('/api/predict', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ originalCode: code })
-            });
-            const data = await res.json();
-            if (data.error) { resultsDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`; return; }
-            if (data.predictions.length === 0) { resultsDiv.innerHTML = '<p style="color: #ff5252;">No predictions found for these matches.</p>'; return; }
-            let html = '<h3 style="color: #9c27b0;">🔮 AI Predictions</h3>';
-            data.predictions.forEach(p => {
-                html += `<div class="code-card" style="border-left-color: #9c27b0;"><h3>${p.match}</h3><p style="margin: 5px 0; font-size: 14px; color: #ccc;">Pick: <strong style="color: #fff;">${p.pick}</strong></p><p style="margin: 5px 0; font-size: 14px; color: #ccc;">Probability: <strong style="color: #00e676;">${p.probability}</strong></p><p style="margin: 5px 0; font-size: 14px; color: #ccc;">Fair Odds: <strong style="color: #fff;">${p.fairOdds}</strong></p><p style="margin: 5px 0; font-size: 12px; color: #aaa; font-style: italic;">${p.verdict}</p></div>`;
-            });
-            resultsDiv.innerHTML = html;
-        } catch (err) { resultsDiv.innerHTML = `<div class="error">❌ Network Error: ${err.message}</div>`; }
+    function runAI() {
+        alert("✨ AI Prediction is a Premium feature coming soon!");
     }
 
     async function subscribe() {
         const token = localStorage.getItem('token');
         if (!token) return alert("Please login first.");
+        
         try {
-            const response = await fetch('/api/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
+            const response = await fetch('/api/subscribe', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } 
+            });
             const data = await response.json();
-            if (data.url) { window.location.href = data.url; }
-            else { alert("Error: " + (data.error || "Could not initialize payment.")); }
-        } catch (error) { alert("Network error. Please try again."); }
+            
+            if (data.url) { 
+                window.location.href = data.url; 
+            } else { 
+                alert("Error: " + (data.error || "Could not initialize payment.")); 
+            }
+        } catch (error) { 
+            alert("Network error. Please try again."); 
+        }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
         checkLogin();
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('premium') === 'success') { alert(`🎉 Payment Successful! Welcome to Premium.`); window.history.replaceState({}, document.title, "/"); }
-        if (urlParams.get('verified') === 'success') { alert(`✅ Email Verified! You can now login.`); window.history.replaceState({}, document.title, "/"); }
-        if (urlParams.get('error')) { alert(`❌ Error: ${urlParams.get('error')}`); window.history.replaceState({}, document.title, "/"); }
+        if (urlParams.get('premium') === 'success') { 
+            alert(`🎉 Payment Successful! Welcome to Premium.`); 
+            window.history.replaceState({}, document.title, "/"); 
+        }
+        if (urlParams.get('error')) { 
+            alert(`❌ Error: ${urlParams.get('error')}`); 
+            window.history.replaceState({}, document.title, "/"); 
+        }
     });
 </script>
 

@@ -56,7 +56,6 @@ app.post('/api/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
         
-        // Direct registration without email verification
         user = new User({ email, password: hashedPassword, isVerified: true });
         await user.save();
 
@@ -143,20 +142,73 @@ app.get('/verify-payment', async (req, res) => {
     }
 });
 
-app.post('/paystack/webhook', async (req, res) => {
-    const event = req.body;
-    if (event.event === 'charge.success' && event.data.plan?.plan_code === PLAN_CODE) {
-        await User.findOneAndUpdate(
-            { email: event.data.customer.email },
-            { isPremium: true, validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-            { upsert: true }
-        );
+// ==========================================
+// 5. AI PREDICTION FEATURE (BET BETTER API)
+// ==========================================
+app.post('/api/predict', authenticateToken, async (req, res) => {
+    try {
+        const { originalCode } = req.body;
+        const userEmail = req.user.email;
+        const user = await User.findOne({ email: userEmail });
+
+        if (!user || !user.isPremium) {
+            return res.status(403).json({ error: "AI Prediction is a Premium feature. Please subscribe." });
+        }
+
+        // 1. Fetch matches from the SportyBet code
+        const matches = await fetchMatches(originalCode);
+        if (!matches) return res.status(400).json({ error: "Invalid code." });
+
+        // 2. Extract team names and query Bet Better API
+        const predictions = [];
+        // Limit to 5 matches to keep it fast
+        for (const match of matches.slice(0, 5)) { 
+            let homeTeam = match.homeTeamName || "";
+            let awayTeam = match.awayTeamName || "";
+            
+            // Clean up team names
+            homeTeam = homeTeam.replace(" FC", "").trim();
+            awayTeam = awayTeam.replace(" FC", "").trim();
+
+            // Note: You must find the correct league slug for your matches. 
+            // Bet Better supports: 'epl', 'la-liga', 'serie-a', 'bundesliga', 'nba', etc.
+            // For testing, we use 'epl' as an example.
+            const leagueSlug = 'epl'; 
+
+            try {
+                const apiRes = await fetch(`https://betbetter.world/api/picks/${leagueSlug}`);
+                const apiData = await apiRes.json();
+                
+                // Find the prediction that matches our teams
+                const matchingPick = apiData.picks?.find(p => 
+                    p.game.toLowerCase().includes(homeTeam.toLowerCase()) || 
+                    p.game.toLowerCase().includes(awayTeam.toLowerCase())
+                );
+
+                if (matchingPick) {
+                    predictions.push({
+                        match: `${homeTeam} vs ${awayTeam}`,
+                        pick: matchingPick.selection,
+                        probability: `${matchingPick.modelProbabilityPct}%`,
+                        fairOdds: matchingPick.fairOdds,
+                        confidence: matchingPick.confidence,
+                        verdict: matchingPick.verdict
+                    });
+                }
+            } catch (e) {
+                console.log(`Could not fetch prediction for ${homeTeam} vs ${awayTeam}`);
+            }
+        }
+
+        res.json({ predictions });
+
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
-    res.sendStatus(200);
 });
 
 // ==========================================
-// 5. LIMIT CHECK LOGIC
+// 6. SPORTYBET LOGIC
 // ==========================================
 async function checkLimit(email) {
     const user = await User.findOne({ email });
@@ -187,9 +239,6 @@ async function checkLimit(email) {
     return { allowed: true, isPremium: false, remaining: 0 };
 }
 
-// ==========================================
-// 6. SPORTYBET LOGIC
-// ==========================================
 function shuffleArray(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
